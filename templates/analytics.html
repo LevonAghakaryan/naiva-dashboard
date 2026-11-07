@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Instagram վիճակագրություն{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Instagram վիճակագրություն</h1>
+    <p class="muted" id="sync-info">{% if account %}@{{ account.username }}{% endif %}</p>
+  </div>
+  <div class="header-actions">
+    <label class="select">
+      <span class="sr-only">Ժամանակահատված</span>
+      <select id="period">
+        <option value="7">Վերջին 7 օր</option>
+        <option value="14">Վերջին 14 օր</option>
+        <option value="30" selected>Վերջին 30 օր</option>
+        <option value="90">Վերջին 90 օր</option>
+      </select>
+    </label>
+    <button class="btn" id="export-btn" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>
+      Արտահանել
+    </button>
+  </div>
+</header>
+
+<div id="page-error" class="alert" hidden></div>
+
+<div class="tabs" role="tablist" aria-label="Բովանդակության տեսակ">
+  <button class="tab is-active" role="tab" aria-selected="true" data-type="all">Ընդհանուր</button>
+  <button class="tab" role="tab" aria-selected="false" data-type="reels">Reels</button>
+  <button class="tab" role="tab" aria-selected="false" data-type="posts">Posts</button>
+  <button class="tab" role="tab" aria-selected="false" data-type="stories">Stories</button>
+</div>
+
+<section class="kpi-grid" id="kpis" aria-live="polite">
+  {% for _ in range(4) %}<div class="card kpi is-loading"><div class="skeleton"></div></div>{% endfor %}
+</section>
+
+<section class="grid-2-1">
+  <div class="card">
+    <div class="card-head">
+      <h2>Reach ըստ օրերի</h2>
+      <span class="muted small">Վերջին 14 օր</span>
+    </div>
+    <div class="chart-box"><canvas id="reach-chart" aria-label="Reach ըստ օրերի" role="img"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Լսարան</h2></div>
+    <div id="audience">
+      <div class="skeleton tall"></div>
+    </div>
+  </div>
+</section>
+
+<section class="grid-2-1">
+  <div class="card">
+    <div class="card-head">
+      <h2>Երբ է լսարանն ակտիվ</h2>
+      <span class="badge" id="best-time" hidden></span>
+    </div>
+    <div id="heatmap" class="heatmap"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Քաղաքներ</h2></div>
+    <ul class="bar-list" id="cities"></ul>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Բոլոր փոստերը</h2>
+    <span class="muted small" id="posts-sort-label">Դասավորված ըստ views</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table" id="posts-table">
+      <thead>
+        <tr>
+          <th>Փոստ</th>
+          <th>Տեսակ</th>
+          <th data-sort="posted_at" class="sortable">Ամսաթիվ</th>
+          <th data-sort="views" class="sortable num">Views</th>
+          <th data-sort="reach" class="sortable num">Reach</th>
+          <th data-sort="likes" class="sortable num">Likes</th>
+          <th data-sort="comments" class="sortable num">Comments</th>
+          <th data-sort="saves" class="sortable num">Saves</th>
+          <th data-sort="shares" class="sortable num">Shares</th>
+          <th data-sort="er" class="sortable num">ER</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted small empty" id="posts-empty" hidden>Այս ժամանակահատվածում փոստեր չկան։</p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', path='js/analytics.js') }}"></script>
+{% endblock %}
