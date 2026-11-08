@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import extract, func, or_, select
+from sqlalchemy import extract, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Deal, Transaction
@@ -46,14 +46,14 @@ class FinanceRepository:
         ).all()
         return [(int(r[0]), int(r[1]), r[2], r[3] or Decimal("0")) for r in rows]
 
-    def income_by_category(self, user_id: int, start: date, end: date) -> list[tuple[int | None, str | None, Decimal]]:
-        """(category_id, category name, sum) of paid income; category may be None."""
+    def sum_by_category(self, user_id: int, type_: str, start: date, end: date) -> list[tuple[int | None, str | None, Decimal]]:
+        """(category_id, category name, sum) of paid income or expense; category may be None."""
         rows = self.db.execute(
             select(Transaction.category_id, Category.name, func.sum(Transaction.amount))
             .outerjoin(Category, Category.id == Transaction.category_id)
             .where(
                 Transaction.user_id == user_id,
-                Transaction.type == "income",
+                Transaction.type == type_,
                 Transaction.status == "paid",
                 Transaction.occurred_at.between(start, end),
             )
@@ -101,6 +101,27 @@ class FinanceRepository:
             .limit(1)
         )
 
+    def get_own_category(self, user_id: int, category_id: int) -> Category | None:
+        """Only the user's own category (default ones can't be changed)."""
+        return self.db.scalar(select(Category).where(Category.id == category_id, Category.user_id == user_id))
+
+    def category_name_exists(self, user_id: int, name: str, type_: str) -> bool:
+        return self.db.scalar(
+            select(func.count(Category.id)).where(
+                func.lower(Category.name) == name.lower(),
+                Category.type == type_,
+                or_(Category.user_id.is_(None), Category.user_id == user_id),
+            )
+        ) > 0
+
+    def uncategorize(self, user_id: int, category_id: int) -> None:
+        """Same as the MySQL FK ON DELETE SET NULL, done explicitly so every engine behaves alike."""
+        self.db.execute(
+            update(Transaction)
+            .where(Transaction.user_id == user_id, Transaction.category_id == category_id)
+            .values(category_id=None)
+        )
+
     # ---------- deals ----------
 
     def list_deals(self, user_id: int, stages: Sequence[str] | None = None) -> list[Deal]:
@@ -112,28 +133,29 @@ class FinanceRepository:
     def get_deal(self, user_id: int, deal_id: int) -> Deal | None:
         return self.db.scalar(select(Deal).where(Deal.id == deal_id, Deal.user_id == user_id))
 
-    def deal_has_transaction(self, deal_id: int) -> bool:
-        return self.db.scalar(
-            select(func.count(Transaction.id)).where(Transaction.deal_id == deal_id)
-        ) > 0
-
     # ---------- transactions ----------
 
-    def count_transactions(self, user_id: int, end: date | None = None) -> int:
-        stmt = select(func.count(Transaction.id)).where(Transaction.user_id == user_id)
+    @staticmethod
+    def _tx_filters(stmt, user_id: int, end: date | None, type_: str | None, category_id: int | None):
+        stmt = stmt.where(Transaction.user_id == user_id)
         if end is not None:
             stmt = stmt.where(Transaction.occurred_at <= end)
+        if type_ is not None:
+            stmt = stmt.where(Transaction.type == type_)
+        if category_id is not None:
+            stmt = stmt.where(Transaction.category_id == category_id)
+        return stmt
+
+    def count_transactions(self, user_id: int, end: date | None = None,
+                           type_: str | None = None, category_id: int | None = None) -> int:
+        stmt = self._tx_filters(select(func.count(Transaction.id)), user_id, end, type_, category_id)
         return self.db.scalar(stmt) or 0
 
-    def list_transactions(self, user_id: int, end: date | None = None,
-                          limit: int = 10, offset: int = 0) -> list[Transaction]:
-        stmt = (
-            select(Transaction)
-            .options(joinedload(Transaction.category))
-            .where(Transaction.user_id == user_id)
+    def list_transactions(self, user_id: int, end: date | None = None, limit: int = 10, offset: int = 0,
+                          type_: str | None = None, category_id: int | None = None) -> list[Transaction]:
+        stmt = self._tx_filters(
+            select(Transaction).options(joinedload(Transaction.category)), user_id, end, type_, category_id
         )
-        if end is not None:
-            stmt = stmt.where(Transaction.occurred_at <= end)
         stmt = stmt.order_by(Transaction.occurred_at.desc(), Transaction.id.desc()).limit(limit).offset(offset)
         return list(self.db.scalars(stmt))
 
@@ -146,11 +168,11 @@ class FinanceRepository:
 
     # ---------- writes ----------
 
-    def add(self, obj: Deal | Transaction) -> None:
+    def add(self, obj: Category | Deal | Transaction) -> None:
         self.db.add(obj)
         self.db.flush()
 
-    def delete(self, obj: Deal | Transaction) -> None:
+    def delete(self, obj: Category | Deal | Transaction) -> None:
         self.db.delete(obj)
         self.db.flush()
 

@@ -18,6 +18,7 @@ MonthStr = Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=2)]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)]
 BrandName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 
 
 # ---------- GET /api/finance/summary ----------
@@ -62,7 +63,7 @@ class MonthlyOut(BaseModel):
     items: list[MonthTotals]  # oldest → newest, the selected month is last
 
 
-# ---------- GET /api/finance/sources ----------
+# ---------- GET /api/finance/sources?type=income|expense ----------
 
 class SourceItem(BaseModel):
     category_id: int | None
@@ -73,6 +74,7 @@ class SourceItem(BaseModel):
 
 class SourcesOut(BaseModel):
     month: str
+    type: TxType
     total: float
     items: list[SourceItem]  # biggest first
 
@@ -82,6 +84,12 @@ class SourcesOut(BaseModel):
 class CategoryOut(BaseModel):
     id: int
     name: str
+    type: TxType
+    own: bool  # created by the user → can be deleted; default ones can't
+
+
+class CategoryIn(BaseModel):
+    name: CategoryName
     type: TxType
 
 

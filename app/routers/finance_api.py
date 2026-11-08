@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_finance_service
 from app.schemas.finance import (
+    CategoryIn,
     CategoryOut,
     DealIn,
     DealOut,
@@ -15,6 +16,7 @@ from app.schemas.finance import (
     TransactionOut,
     TransactionPatch,
     TransactionsOut,
+    TxType,
 )
 from app.services.finance_service import FinanceService
 
@@ -40,13 +42,30 @@ def monthly(
 
 
 @router.get("/sources", response_model=SourcesOut)
-def sources(month: MonthStr | None = MonthQuery, service: FinanceService = Depends(get_finance_service)):
-    return service.sources(month)
+def sources(
+    month: MonthStr | None = MonthQuery,
+    type: TxType = Query("income"),
+    service: FinanceService = Depends(get_finance_service),
+):
+    return service.sources(month, type)
 
+
+# ---------- categories ----------
 
 @router.get("/categories", response_model=list[CategoryOut])
 def categories(service: FinanceService = Depends(get_finance_service)):
     return service.categories()
+
+
+@router.post("/categories", response_model=CategoryOut, status_code=201)
+def create_category(data: CategoryIn, service: FinanceService = Depends(get_finance_service)):
+    return service.create_category(data)
+
+
+@router.delete("/categories/{category_id}", status_code=204)
+def delete_category(category_id: int, service: FinanceService = Depends(get_finance_service)):
+    service.delete_category(category_id)
+    return Response(status_code=204)
 
 
 # ---------- deals (kanban) ----------
@@ -79,9 +98,11 @@ def transactions(
     month: MonthStr | None = Query(None, description="YYYY-MM; only transactions up to the end of this month"),
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    type: TxType | None = Query(None, description="income | expense; empty = both"),
+    category_id: int | None = Query(None),
     service: FinanceService = Depends(get_finance_service),
 ):
-    return service.transactions(month, limit, offset)
+    return service.transactions(month, limit, offset, type, category_id)
 
 
 @router.post("/transactions", response_model=TransactionOut, status_code=201)

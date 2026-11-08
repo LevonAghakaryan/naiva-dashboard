@@ -28,8 +28,8 @@
 
 <div id="page-error" class="alert" hidden></div>
 
-<section class="kpi-grid" id="kpis" aria-live="polite">
-  {% for _ in range(4) %}<div class="card kpi is-loading"><div class="skeleton"></div></div>{% endfor %}
+<section class="kpi-grid kpi-grid-3" id="kpis" aria-live="polite">
+  {% for _ in range(3) %}<div class="card kpi is-loading"><div class="skeleton"></div></div>{% endfor %}
 </section>
 
 <section class="grid-2-1">
@@ -45,7 +45,7 @@
   </div>
 
   <div class="card">
-    <div class="card-head"><h2>Եկամուտն ըստ աղբյուրի</h2></div>
+    <div class="card-head"><h2 id="sources-title">Եկամուտն ըստ կատեգորիայի</h2></div>
     <div id="sources"><div class="skeleton tall"></div></div>
   </div>
 </section>
@@ -57,7 +57,8 @@
       <span class="muted small" id="deals-meta"></span>
     </div>
     <div class="kanban" id="kanban"></div>
-    <p class="muted small kanban-hint">Քարտը կարող եք քաշել մեկ այլ սյունակ կամ սեղմել՝ խմբագրելու համար։</p>
+    <p class="muted small kanban-hint">Քարտը քաշեք այլ սյունակ կամ սեղմեք <b>→</b>՝ հաջորդ փուլ տանելու համար։
+      «Պայմանագիր» և «Կատարման մեջ» փուլերի գումարը սպասվող է, իսկ «Վճարված» սյունակում այն ավտոմատ ավելանում է եկամուտին։</p>
   </div>
 
   <div class="card ai-card">
@@ -75,9 +76,14 @@
 
 <section class="card">
   <div class="card-head">
-    <h2>Գործարքներ</h2>
-    <span class="muted small" id="tx-meta"></span>
+    <h2>Գործարքներ <span class="muted small" id="tx-meta"></span></h2>
+    <div class="tabs" role="tablist" id="type-tabs" aria-label="Տեսակ">
+      <button class="tab is-active" type="button" role="tab" aria-selected="true" data-type="">Բոլորը</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-type="income">Եկամուտ</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-type="expense">Ծախս</button>
+    </div>
   </div>
+  <div class="chips" id="cat-chips" hidden></div>
   <div class="table-wrap">
     <table class="table table-tx" id="tx-table">
       <thead>
@@ -95,6 +101,8 @@
   <p class="muted small empty" id="tx-empty" hidden>Գործարքներ դեռ չկան։ Սեղմեք «Ավելացնել»։</p>
   <div class="more-wrap"><button class="btn" id="tx-more" type="button" hidden>Ցույց տալ ավելին</button></div>
 </section>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- Add / edit modal -->
 <dialog class="modal" id="modal" aria-labelledby="modal-title">

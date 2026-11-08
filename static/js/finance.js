@@ -4,11 +4,18 @@
   const COLORS = { accent: "#2563EB", amber: "#F59E0B", grid: "#EEF1F5", muted: "#5B6577", text: "#0F172A" };
   const SOURCE_COLORS = ["#2563EB", "#60A5FA", "#F59E0B", "#94A3B8", "#A78BFA", "#34D399"];
   const TX_PAGE = 10;
+  const STAGES = ["negotiation", "contract", "in_progress", "paid"];
+  const STAGE_LABELS = { negotiation: "Բանակցություն", contract: "Պայմանագիր", in_progress: "Կատարման մեջ", paid: "Վճարված", lost: "Չկայացած" };
+  const PENDING_STAGES = ["contract", "in_progress"];
 
   const today = new Date();
   const currentMonth = monthKey(today.getFullYear(), today.getMonth() + 1);
 
-  const state = { month: currentMonth, categories: [], deals: new Map(), tx: [], txTotal: 0, editing: null };
+  const state = {
+    month: currentMonth, categories: [], deals: new Map(), tx: [], txTotal: 0, editing: null,
+    filter: { type: "", category: null },  // type: "" | "income" | "expense"
+    kpi: null, pending: null, flashDeal: null,
+  };
   let cashChart = null;
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -49,7 +56,7 @@
     if (typeof d === "string") return d;
     if (Array.isArray(d) && d.length) {
       const field = d[0].loc ? d[0].loc[d[0].loc.length - 1] : "";
-      const names = { amount: "Գումար", occurred_at: "Ամսաթիվ", brand_name: "Բրենդ", due_date: "Վերջնաժամկետ", description: "Նկարագրություն" };
+      const names = { amount: "Գումար", occurred_at: "Ամսաթիվ", brand_name: "Բրենդ", due_date: "Վերջնաժամկետ", description: "Նկարագրություն", name: "Անուն" };
       return `${names[field] || field}՝ սխալ արժեք։`;
     }
     return `Սխալ (${status})`;
@@ -81,14 +88,45 @@
       </div>`;
 
     const margin = s.margin_pct === null ? "—" : fmt.percent(s.margin_pct);
-    const p = s.pending;
-    const nearest = p.nearest_due ? `ամենամոտը՝ ${fmt.dayMonth(p.nearest_due)}` : "սպասվող վճարում չկա";
     $("#kpis").innerHTML = [
       card(s.income, `նախորդ ամիս՝ ${fmt.amdShort(s.income.previous)}`),
       card(s.expense, `նախորդ ամիս՝ ${fmt.amdShort(s.expense.previous)}`),
-      card(s.net, `մարժա՝ ${margin}`),
-      card({ label: p.label, value: p.value }, nearest, `<span class="pill up">${p.count} գործարք</span>`),
+      card(s.net, `մարժա՝ ${margin} · եկամուտ − ծախս`),
     ].join("");
+
+    // Highlight the cards whose value just changed (same month, after an action).
+    const prev = state.kpi;
+    if (prev && prev.month === s.month) {
+      [s.income, s.expense, s.net].forEach((k, i) => {
+        if (prev[k.key] !== k.value) $$("#kpis .kpi")[i].classList.add("flash");
+      });
+    }
+    const pendingChanged = state.pending && state.pending.value !== s.pending.value;
+    state.kpi = { month: s.month, income: s.income.value, expense: s.expense.value, net: s.net.value };
+    state.pending = s.pending;
+    renderDealsMeta();
+    const meta = $("#deals-meta");
+    meta.classList.remove("flash");
+    if (pendingChanged) { void meta.offsetWidth; meta.classList.add("flash"); }
+  }
+
+  function renderDealsMeta() {
+    const p = state.pending;
+    if (!p) return;
+    const nearest = p.nearest_due ? ` · ամենամոտը՝ ${fmt.dayMonth(p.nearest_due)}` : "";
+    $("#deals-meta").textContent = p.value
+      ? `Սպասվող՝ ${fmt.amdShort(p.value)}${nearest}`
+      : "Սպասվող վճարում չկա";
+  }
+
+  // ---------- Toast ----------
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $("#toast");
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
   }
 
   // ---------- Income vs expense chart ----------
@@ -148,15 +186,17 @@
   // ---------- Sources ----------
   function renderSources(data) {
     const el = $("#sources");
+    const isIncome = data.type === "income";
+    $("#sources-title").textContent = isIncome ? "Եկամուտն ըստ կատեգորիայի" : "Ծախսն ըստ կատեգորիայի";
     if (!data.items.length) {
-      el.innerHTML = `<p class="muted">Այս ամիս վճարված եկամուտ չկա։</p>`;
+      el.innerHTML = `<p class="muted">Այս ամիս ${isIncome ? "վճարված եկամուտ" : "ծախս"} չկա։</p>`;
       return;
     }
     const color = (i) => SOURCE_COLORS[i % SOURCE_COLORS.length];
     el.innerHTML = `
       <div class="stack-bar">${data.items.map((s, i) => `<span style="width:${s.percent}%;background:${color(i)}" title="${fmt.escape(s.label)} ${fmt.percent(s.percent)}"></span>`).join("")}</div>
       <ul class="source-list">${data.items.map((s, i) => `
-        <li>
+        <li ${s.category_id ? `data-cat="${s.category_id}" data-type="${data.type}" title="Ցույց տալ այս կատեգորիայի գործարքները"` : ""}>
           <span class="name"><i style="background:${color(i)}"></i>${fmt.escape(s.label)}</span>
           <span class="pct">${fmt.percent(s.percent)}</span>
           <span class="amt">${fmt.amd(s.amount)}</span>
@@ -169,11 +209,12 @@
     state.deals.clear();
     board.columns.forEach((c) => c.items.forEach((d) => state.deals.set(d.id, d)));
     board.lost.forEach((d) => state.deals.set(d.id, d));
-    $("#deals-meta").textContent = `${board.active_count} ակտիվ · ${fmt.amdShort(board.active_total)} ընդհանուր`;
+    renderDealsMeta();
 
     $("#kanban").innerHTML = board.columns.map((c) => `
       <div class="k-col" data-stage="${c.stage}">
         <div class="k-head"><span>${fmt.escape(c.label)}</span><span class="muted">${c.count}</span></div>
+        <span class="k-total">${fmt.amdShort(c.total)}</span>
         <div class="k-list">
           ${c.items.map(dealCard).join("") || `<div class="k-empty">Դատարկ է</div>`}
           ${c.stage === "paid" && c.count > c.items.length ? `<div class="k-empty">+${c.count - c.items.length} ավելի հին</div>` : ""}
@@ -183,12 +224,55 @@
 
   function dealCard(d) {
     const due = d.due_date ? `<span class="k-due">${fmt.dayMonth(d.due_date)}</span>` : "";
+    const next = STAGES[STAGES.indexOf(d.stage) + 1];
+    const nextBtn = next
+      ? `<button class="k-next" type="button" data-next="${next}" title="Տեղափոխել «${STAGE_LABELS[next]}»" aria-label="Տեղափոխել «${STAGE_LABELS[next]}»">→</button>`
+      : "";
+    const flash = state.flashDeal === d.id ? " flash" : "";
     return `
-      <button class="k-card" type="button" draggable="true" data-id="${d.id}">
+      <div class="k-card${flash}" role="button" tabindex="0" draggable="true" data-id="${d.id}">
         <span class="k-brand">${fmt.escape(d.brand_name)}</span>
         ${d.deliverables ? `<span class="k-sub">${fmt.escape(d.deliverables)}</span>` : ""}
         <span class="k-foot"><b>${fmt.amd(d.amount)}</b>${due}</span>
-      </button>`;
+        ${nextBtn}
+      </div>`;
+  }
+
+  /** What changed in the money when a deal moves — shown as a toast. */
+  function moveMessage(deal, to) {
+    const from = deal.stage;
+    const name = deal.brand_name;
+    const amt = fmt.amd(deal.amount);
+    if (to === "paid") {
+      return deal.amount > 0
+        ? `✓ ${name}՝ վճարված։ ${amt} ավելացավ եկամուտին և գործարքների ցուցակին։`
+        : `✓ ${name}՝ վճարված։ Գումար նշված չէ, ուստի եկամուտ չավելացավ։`;
+    }
+    if (from === "paid") return `${name}՝ հանվեց «Վճարված»-ից։ ${amt}-ն այլևս եկամուտ չի հաշվվում։`;
+    const wasPending = PENDING_STAGES.includes(from);
+    const isPending = PENDING_STAGES.includes(to);
+    if (isPending && !wasPending) return `${name}՝ «${STAGE_LABELS[to]}»։ ${amt} ավելացավ սպասվող գումարին։`;
+    if (!isPending && wasPending) return `${name}՝ «${STAGE_LABELS[to]}»։ ${amt} հանվեց սպասվող գումարից։`;
+    return `${name}՝ տեղափոխվեց «${STAGE_LABELS[to]}»։`;
+  }
+
+  async function moveDeal(deal, stage) {
+    if (!deal || deal.stage === stage) return;
+    const msg = moveMessage(deal, stage);
+    try {
+      await api(`/deals/${deal.id}`, { method: "PATCH", body: { stage } });
+      afterDealChange(deal.id, msg, stage === "paid" || deal.stage === "paid");
+      await reloadAll();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  /** Income is booked today: jump to the current month so the change is visible. */
+  function afterDealChange(id, msg, touchesIncome) {
+    state.flashDeal = id;
+    if (touchesIncome && state.month !== currentMonth) state.month = currentMonth;
+    toast(msg);
   }
 
   function setupKanban() {
@@ -197,7 +281,17 @@
 
     board.addEventListener("click", (e) => {
       const card = e.target.closest(".k-card");
-      if (card) openModal("deal-form", state.deals.get(Number(card.dataset.id)));
+      if (!card) return;
+      const deal = state.deals.get(Number(card.dataset.id));
+      const next = e.target.closest(".k-next");
+      if (next) moveDeal(deal, next.dataset.next);
+      else openModal("deal-form", deal);
+    });
+    board.addEventListener("keydown", (e) => {
+      if (e.target.classList.contains("k-card") && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        openModal("deal-form", state.deals.get(Number(e.target.dataset.id)));
+      }
     });
     board.addEventListener("dragstart", (e) => {
       const card = e.target.closest(".k-card");
@@ -224,15 +318,8 @@
       e.preventDefault();
       col.classList.remove("is-over");
       const deal = state.deals.get(dragId);
-      const stage = col.dataset.stage;
       dragId = null;
-      if (!deal || deal.stage === stage) return;
-      try {
-        await api(`/deals/${deal.id}`, { method: "PATCH", body: { stage } });
-        await reloadAll();
-      } catch (err) {
-        showError(err);
-      }
+      await moveDeal(deal, col.dataset.stage);
     });
   }
 
@@ -261,7 +348,111 @@
 
   function loadTx(append = false) {
     const params = { month: state.month, limit: TX_PAGE, offset: append ? state.tx.length : 0 };
+    if (state.filter.type) params.type = state.filter.type;
+    if (state.filter.category) params.category_id = state.filter.category;
     return api("/transactions", { params }).then((d) => renderTx(append, d));
+  }
+
+  function loadSources() {
+    const type = state.filter.type || "income";
+    return api("/sources", { params: { month: state.month, type } }).then(renderSources);
+  }
+
+  // ---------- Type tabs + category chips ----------
+  function renderFilters() {
+    const { type, category } = state.filter;
+    $$("#type-tabs .tab").forEach((t) => {
+      const on = t.dataset.type === type;
+      t.classList.toggle("is-active", on);
+      t.setAttribute("aria-selected", on);
+    });
+    const box = $("#cat-chips");
+    box.hidden = !type;
+    if (!type) return;
+    const cats = state.categories.filter((c) => c.type === type);
+    box.innerHTML =
+      `<button class="chip${category ? "" : " is-active"}" type="button" data-cat="">Բոլորը</button>` +
+      cats.map((c) => `
+        <span class="chip${c.id === category ? " is-active" : ""}" role="button" tabindex="0" data-cat="${c.id}">
+          ${fmt.escape(c.name)}
+          ${c.own ? `<button class="chip-x" type="button" data-del="${c.id}" title="Ջնջել կատեգորիան" aria-label="Ջնջել ${fmt.escape(c.name)}">×</button>` : ""}
+        </span>`).join("") +
+      `<button class="chip chip-add" type="button" data-add>+ Նոր կատեգորիա</button>`;
+  }
+
+  function setFilter(type, category = null) {
+    state.filter = { type, category };
+    renderFilters();
+    return Promise.all([loadTx(), loadSources()]).catch(showError);
+  }
+
+  async function reloadCategories() {
+    state.categories = await api("/categories");
+  }
+
+  async function createCategory(name, type) {
+    const cat = await api("/categories", { method: "POST", body: { name, type } });
+    await reloadCategories();
+    return cat;
+  }
+
+  function showAddCategory(btn) {
+    const form = document.createElement("form");
+    form.className = "chip-form";
+    form.innerHTML = `<input name="name" maxlength="80" placeholder="Կատեգորիայի անուն" aria-label="Կատեգորիայի անուն" required>
+      <button class="chip is-active" type="submit">Ավելացնել</button>`;
+    btn.replaceWith(form);
+    const input = form.name;
+    input.focus();
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") renderFilters(); });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = input.value.trim();
+      if (!name) return;
+      try {
+        const cat = await createCategory(name, state.filter.type);
+        toast(`Կատեգորիան ավելացավ՝ «${cat.name}»։`);
+        await setFilter(state.filter.type, cat.id);
+      } catch (err) {
+        showError(err);
+      }
+    });
+  }
+
+  function setupFilters() {
+    $$("#type-tabs .tab").forEach((t) => t.addEventListener("click", () => setFilter(t.dataset.type)));
+    const box = $("#cat-chips");
+    box.addEventListener("click", async (e) => {
+      const del = e.target.closest("[data-del]");
+      if (del) {
+        const cat = state.categories.find((c) => c.id === Number(del.dataset.del));
+        if (!cat || !confirm(`Ջնջե՞լ «${cat.name}» կատեգորիան։ Գործարքները կմնան՝ առանց կատեգորիայի։`)) return;
+        try {
+          await api(`/categories/${cat.id}`, { method: "DELETE" });
+          await reloadCategories();
+          await setFilter(state.filter.type, state.filter.category === cat.id ? null : state.filter.category);
+        } catch (err) {
+          showError(err);
+        }
+        return;
+      }
+      if (e.target.closest("[data-add]")) return showAddCategory(e.target.closest("[data-add]"));
+      const chip = e.target.closest("[data-cat]");
+      if (chip) setFilter(state.filter.type, chip.dataset.cat ? Number(chip.dataset.cat) : null);
+    });
+    box.addEventListener("keydown", (e) => {
+      const chip = e.target.closest("span[data-cat]");
+      if (chip && e.target === chip && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        chip.click();
+      }
+    });
+    $("#sources").addEventListener("click", (e) => {
+      const li = e.target.closest("li[data-cat]");
+      if (!li) return;
+      setFilter(li.dataset.type, Number(li.dataset.cat));
+      $("#tx-table").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function setupTxTable() {
@@ -291,7 +482,32 @@
     const select = $("#tx-form select[name=category_id]");
     const opts = state.categories.filter((c) => c.type === type);
     select.innerHTML = `<option value="">— Առանց կատեգորիայի —</option>` +
-      opts.map((c) => `<option value="${c.id}"${c.id === selected ? " selected" : ""}>${fmt.escape(c.name)}</option>`).join("");
+      opts.map((c) => `<option value="${c.id}"${c.id === selected ? " selected" : ""}>${fmt.escape(c.name)}</option>`).join("") +
+      `<option value="__new">+ Նոր կատեգորիա…</option>`;
+    select.dataset.prev = selected ? String(selected) : "";
+  }
+
+  async function onCategorySelect(e) {
+    const select = e.target;
+    if (select.value !== "__new") {
+      select.dataset.prev = select.value;
+      return;
+    }
+    const form = $("#tx-form");
+    const type = $("input[name=type]:checked", form).value;
+    const name = (prompt(type === "income" ? "Եկամտի նոր կատեգորիա" : "Ծախսի նոր կատեգորիա") || "").trim();
+    if (!name) {
+      select.value = select.dataset.prev || "";
+      return;
+    }
+    try {
+      const cat = await createCategory(name, type);
+      fillCategories(type, cat.id);
+      renderFilters();
+    } catch (err) {
+      select.value = select.dataset.prev || "";
+      formError(form, err.message);
+    }
   }
 
   function switchForm(formId) {
@@ -318,9 +534,9 @@
     $("[data-delete]", form).hidden = !item;
 
     if (formId === "tx-form") {
-      const type = item ? item.type : "income";
+      const type = item ? item.type : state.filter.type || "income";
       $(`input[name=type][value=${type}]`, form).checked = true;
-      fillCategories(type, item ? item.category_id : null);
+      fillCategories(type, item ? item.category_id : state.filter.category);
       form.amount.value = item ? item.amount : "";
       form.occurred_at.value = item ? item.occurred_at : isoToday();
       form.description.value = item ? item.description || "" : "";
@@ -384,6 +600,7 @@
     $$("[data-close]", modal).forEach((b) => b.addEventListener("click", closeModal));
     modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
     $$("#tx-form input[name=type]").forEach((r) => r.addEventListener("change", () => fillCategories(r.value, null)));
+    $("#tx-form select[name=category_id]").addEventListener("change", onCategorySelect);
 
     const submit = (formId, read, path) => async (e) => {
       e.preventDefault();
@@ -393,9 +610,20 @@
         const body = read(form);
         btn.disabled = true;
         const editing = state.editing;
-        if (editing) await api(`${path}/${editing.id}`, { method: "PATCH", body });
-        else await api(path, { method: "POST", body });
+        const before = editing && formId === "deal-form" ? state.deals.get(editing.id) : null;
+        const saved = editing
+          ? await api(`${path}/${editing.id}`, { method: "PATCH", body })
+          : await api(path, { method: "POST", body });
         closeModal();
+        if (formId === "deal-form") {
+          const fromStage = before ? before.stage : null;
+          const deal = { ...saved, stage: fromStage };
+          const moved = fromStage !== saved.stage;
+          let msg = moved ? moveMessage(deal, saved.stage) : `${saved.brand_name}՝ պահպանված է։`;
+          if (!before && saved.stage !== "paid") msg = `${saved.brand_name}՝ ավելացավ «${STAGE_LABELS[saved.stage]}» սյունակում։`;
+          if (moved || !before) afterDealChange(saved.id, msg, saved.stage === "paid" || fromStage === "paid");
+          else toast(msg);
+        }
         await reloadAll();
       } catch (err) {
         formError(form, err.message);
@@ -427,14 +655,15 @@
     return Promise.all([
       api("/summary", { params }).then(renderSummary),
       api("/monthly", { params: { ...params, months: 6 } }).then(renderMonthly),
-      api("/sources", { params }).then(renderSources),
+      loadSources(),
       loadTx(),
     ]);
   }
 
-  function reloadAll() {
+  async function reloadAll() {
     $("#page-error").hidden = true;
-    return Promise.all([loadMonth(), api("/deals").then(renderDeals)]);
+    await Promise.all([loadMonth(), api("/deals").then(renderDeals)]);
+    state.flashDeal = null;
   }
 
   async function init() {
@@ -449,10 +678,12 @@
     });
     setupKanban();
     setupTxTable();
+    setupFilters();
     setupModal();
 
     try {
-      state.categories = await api("/categories");
+      await reloadCategories();
+      renderFilters();
       await reloadAll();
     } catch (err) {
       showError(err);

@@ -4,9 +4,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.models import Deal, Transaction
+from app.models import Category, Deal, Transaction
 from app.repositories.finance_repository import FinanceRepository
 from app.schemas.finance import (
+    CategoryIn,
     CategoryOut,
     DealColumn,
     DealIn,
@@ -94,6 +95,16 @@ def _deal_out(d: Deal) -> DealOut:
                    amount=float(d.amount or 0), stage=d.stage, due_date=d.due_date)
 
 
+def _category_out(c: Category) -> CategoryOut:
+    return CategoryOut(id=c.id, name=c.name, type=c.type, own=c.user_id is not None)
+
+
+def _paid_on(d: Deal) -> date:
+    """When a paid deal was paid: its latest paid income, else its due date."""
+    dates = [t.occurred_at for t in d.transactions if t.type == "income" and t.status == "paid"]
+    return max(dates) if dates else (d.due_date or date.min)
+
+
 def _status_label(tx: Transaction) -> str:
     if tx.status == "pending":
         return "Սպասվող"
@@ -166,9 +177,9 @@ class FinanceService:
             ))
         return MonthlyOut(items=items)
 
-    def sources(self, month: str | None) -> SourcesOut:
+    def sources(self, month: str | None, type_: str = "income") -> SourcesOut:
         first = parse_month(month, self.today)
-        rows = self.repo.income_by_category(self.user_id, first, month_end(first))
+        rows = self.repo.sum_by_category(self.user_id, type_, first, month_end(first))
         total = sum((s for _, _, s in rows), Decimal("0"))
         items = sorted(
             (SourceItem(category_id=cid, label=name or UNCATEGORIZED, amount=float(s),
@@ -176,12 +187,31 @@ class FinanceService:
              for cid, name, s in rows if s > 0),
             key=lambda i: i.amount, reverse=True,
         )
-        return SourcesOut(month=month_key(first), total=float(total), items=items)
+        return SourcesOut(month=month_key(first), type=type_, total=float(total), items=items)
 
     # ---------- categories ----------
 
     def categories(self) -> list[CategoryOut]:
-        return [CategoryOut(id=c.id, name=c.name, type=c.type) for c in self.repo.list_categories(self.user_id)]
+        return [_category_out(c) for c in self.repo.list_categories(self.user_id)]
+
+    def create_category(self, data: CategoryIn) -> CategoryOut:
+        if self.repo.category_name_exists(self.user_id, data.name, data.type):
+            raise FinanceInvalid("Այդ անունով կատեգորիա արդեն կա։")
+        category = Category(user_id=self.user_id, name=data.name, type=data.type)
+        self.repo.add(category)
+        self.repo.commit()
+        return _category_out(category)
+
+    def delete_category(self, category_id: int) -> None:
+        """Only the user's own categories; their transactions stay, without a category."""
+        category = self.repo.get_own_category(self.user_id, category_id)
+        if category is None:
+            if self.repo.get_category(self.user_id, category_id) is not None:
+                raise FinanceInvalid("Հիմնական կատեգորիան հնարավոր չէ ջնջել։")
+            raise FinanceNotFound("Կատեգորիան չի գտնվել։")
+        self.repo.uncategorize(self.user_id, category_id)
+        self.repo.delete(category)
+        self.repo.commit()
 
     # ---------- deals ----------
 
@@ -190,8 +220,8 @@ class FinanceService:
         by_stage: dict[str, list[Deal]] = {s: [] for s in STAGE_LABELS}
         for d in deals:
             by_stage[d.stage].append(d)
-        # Paid column: most recent first (due date, then newest id).
-        by_stage["paid"].sort(key=lambda d: (d.due_date or date.min, d.id), reverse=True)
+        # Paid column: most recently paid first, so a card just moved there is on top.
+        by_stage["paid"].sort(key=lambda d: (_paid_on(d), d.id), reverse=True)
 
         columns = []
         for stage in BOARD_STAGES:
@@ -227,11 +257,15 @@ class FinanceService:
             changes["amount"] = Decimal("0")
         if "stage" in changes and changes["stage"] is None:
             raise FinanceInvalid("Փուլը պարտադիր է։")
-        became_paid = changes.get("stage") == "paid" and deal.stage != "paid"
+        was_paid = deal.stage == "paid"
         for key, value in changes.items():
             setattr(deal, key, value)
-        if became_paid:
+        if deal.stage == "paid" and not was_paid:
             self._record_deal_payment(deal)
+        elif was_paid and deal.stage != "paid":
+            self._undo_deal_payment(deal)
+        elif deal.stage == "paid" and "amount" in changes:
+            self._sync_deal_amount(deal)
         self.repo.commit()
         return _deal_out(deal)
 
@@ -263,14 +297,29 @@ class FinanceService:
             description=description[:255], status="paid", source="manual", occurred_at=self.today,
         ))
 
+    def _undo_deal_payment(self, deal: Deal) -> None:
+        """Moving a deal out of "Վճարված": its income is no longer counted (paid → pending)."""
+        for tx in deal.transactions:
+            if tx.type == "income" and tx.status == "paid":
+                tx.status = "pending"
+
+    def _sync_deal_amount(self, deal: Deal) -> None:
+        """A paid deal's amount was edited: keep its single income transaction in step."""
+        income = [t for t in deal.transactions if t.type == "income"]
+        if len(income) == 1 and deal.amount and deal.amount > 0:
+            income[0].amount = deal.amount
+        elif not income:
+            self._record_deal_payment(deal)
+
     # ---------- transactions ----------
 
-    def transactions(self, month: str | None, limit: int, offset: int) -> TransactionsOut:
+    def transactions(self, month: str | None, limit: int, offset: int,
+                     type_: str | None = None, category_id: int | None = None) -> TransactionsOut:
         """Newest first, up to the end of the selected month ("load more" pages back in time)."""
         end = month_end(parse_month(month, self.today)) if month else None
-        items = self.repo.list_transactions(self.user_id, end, limit, offset)
+        items = self.repo.list_transactions(self.user_id, end, limit, offset, type_, category_id)
         return TransactionsOut(
-            total=self.repo.count_transactions(self.user_id, end),
+            total=self.repo.count_transactions(self.user_id, end, type_, category_id),
             items=[_tx_out(t) for t in items],
         )
 
