@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.models import IgAccount
 from app.repositories.analytics_repository import AnalyticsRepository
+from app.repositories.finance_repository import FinanceRepository
 from app.services.analytics_service import AnalyticsService
+from app.services.finance_service import FinanceService
 from core.database import SessionLocal
 
 NO_ACCOUNT_MESSAGE = "Բազայում Instagram հաշիվ չկա։ Գործարկեք scripts/seed.py-ը դեմո տվյալների համար։"
@@ -35,3 +37,11 @@ def get_analytics_service(
     account: IgAccount = Depends(get_current_ig_account),
 ) -> AnalyticsService:
     return AnalyticsService(AnalyticsRepository(db), account)
+
+
+def get_finance_service(
+    db: Session = Depends(get_db),
+    account: IgAccount = Depends(get_current_ig_account),
+) -> FinanceService:
+    # Finance belongs to the user, not to one Instagram account.
+    return FinanceService(FinanceRepository(db), account.user_id)

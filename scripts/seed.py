@@ -6,6 +6,8 @@ Usage (from the project folder, after db/schema.sql has been run in MySQL):
 
 Last-30-day totals are calibrated to the design (PROJECT.md §3):
 Views 1.2M ▲14%, Reach 312K ▲12.4%, Profile views 18.4K ▲6%, Saves 9.6K ▼3%, followers 48,230 (+1,490).
+Finance (deals + transactions) is calibrated too — see scripts/seed_finance.py.
+If the demo user already exists but has no finance data, only the finance part is added.
 Only the demo user/account is touched; nothing else in the DB is changed.
 """
 from __future__ import annotations
@@ -33,6 +35,7 @@ from app.models import (  # noqa: E402
     User,
 )
 from core.database import SessionLocal  # noqa: E402
+from scripts.seed_finance import delete_finance, has_finance, seed_finance  # noqa: E402
 
 DEMO_EMAIL = "ani.demo@example.com"
 DEMO_IG_USER_ID = "demo_ani_travels"
@@ -169,6 +172,7 @@ def delete_demo(db: Session) -> bool:
     user = db.scalar(select(User).where(User.email == DEMO_EMAIL))
     if user is None:
         return False
+    delete_finance(db, user.id)
     acc_ids = select(IgAccount.id).where(IgAccount.user_id == user.id)
     post_ids = select(Post.id).where(Post.ig_account_id.in_(acc_ids))
     db.execute(delete(PostStats).where(PostStats.post_id.in_(post_ids)))
@@ -233,6 +237,8 @@ def seed(db: Session, today: date | None = None, rng_seed: int = 42) -> IgAccoun
             acc.online_hours.append(AudienceOnlineHours(day=d, hour=h, value=round(value)))
 
     db.add(user)
+    db.flush()
+    seed_finance(db, user, today)
     return acc
 
 
@@ -243,8 +249,14 @@ def main() -> int:
 
     try:
         with SessionLocal() as db:
-            if db.scalar(select(User.id).where(User.email == DEMO_EMAIL)) is not None:
+            existing = db.scalar(select(User).where(User.email == DEMO_EMAIL))
+            if existing is not None:
                 if not args.reset:
+                    if not has_finance(db, existing.id):
+                        seed_finance(db, existing)
+                        db.commit()
+                        print("Ֆինանսների դեմո տվյալներն ավելացված են։")
+                        return 0
                     print("Դեմո տվյալներն արդեն կան։ Նորից ստեղծելու համար՝ scripts/seed.py --reset")
                     return 0
                 delete_demo(db)

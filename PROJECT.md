@@ -1,7 +1,7 @@
 # Creatorly — PROJECT.md
 
 > Նոր սեսիայում ասեք՝ «կարդա PROJECT.md-ն ու շարունակենք»։ Այս ֆայլը նախագծի «հիշողությունն» է։
-> Վերջին թարմացում՝ 2026-11-07
+> Վերջին թարմացում՝ 2026-11-08
 
 ---
 
@@ -12,7 +12,7 @@
   Եթե terminal-ում տողի սկզբում `(.venv)` է, `pip install`-ը նույնպես գնում է `.venv`։
 - `.venv`՝ Python 3.12.4
 - MySQL-ը տեղադրված է օգտատիրոջ մոտ։ **Չստուգել, չփոխել առանց թույլտվության**։ Բազան և աղյուսակները ստեղծելու համար նախ հարցնել։
-- Git-ը այս թղթապանակը տեսնում է որպես `C:\Users\USER`-ի վրա բացված մեծ repo-ի մաս։ **Այնտեղ commit չանել։** GitHub-ի համար այստեղ առանձին `git init` ենք անելու։
+- Այս թղթապանակն ունի իր սեփական git repo-ն (`main` → GitHub `LevonAghakaryan/naiva-dashboard`)։ `C:\Users\USER`-ի մեծ repo-ում **commit չանել**։ `.env`-ը երբեք git չի գնում։
 - Աշխատում ենք **մաս-մաս**։ Ամեն քայլից առաջ պատմել, թե ինչ ենք անելու, ու սպասել հաստատման։
 
 ---
@@ -243,10 +243,43 @@ Instagram API-ին իրական միացումը (`instagram_client.py`) կան�
 
 ---
 
+## 11.2 Մաս 2. «Ֆինանսներ» էջ — ✅ պատրաստ է (2026-11-08)
+
+**Արված է.**
+- [x] `app/models/finance.py`՝ `Category`, `Deal`, `Transaction`։ `deals.contact_id`-ը մոդելում դեռ FK չունի (Contact մոդելը կգա Նամակների հետ)։ Deal-ը ջնջելիս նրա գործարքները մնում են (`deal_id → NULL`)
+- [x] `app/schemas/finance.py`, `app/repositories/finance_repository.py`, `app/services/finance_service.py`, `app/routers/finance_api.py`
+- [x] `templates/finance.html`, `static/js/finance.js`։ `format.js`-ում ավելացել են `amdShort` (֏1.24M) և `dayMonth` (Նոյ 5)
+- [x] `scripts/seed_finance.py` (կանչվում է `seed.py`-ից)։ Եթե դեմո օգտատերն արդեն կա, բայց ֆինանսներ չունի, `seed.py`-ն ավելացնում է միայն ֆինանսները
+- [x] Ստուգված է SQLite-ով + MySQL-ով, desktop/mobile screenshot
+
+**Կանոններ (որոշված).**
+- Ժամանակահատվածը **օրացուցային ամիսն է** (`month=YYYY-MM`), համեմատությունը՝ նախորդ ամսվա հետ
+- Եկամուտ/ծախս = միայն `status='paid'` գործարքներ
+- Ծախսի աճը կարմիր pill է (`good=false`)
+- **Սպասվող վճարումներ** = `contract` + `in_progress` փուլի deal-եր + deal-ի հետ չկապված `pending` եկամուտներ։ «Ամենամոտը»-ն ամենամոտ ապագա ամսաթիվն է
+- Deal-ը «Վճարված» դարձնելիս ավտոմատ ստեղծվում է եկամուտ (կատեգորիա «Համագործակցություն», այսօրվա ամսաթվով)։ Եթե արդեն կապված գործարք կա, նորը չի ստեղծվում (pending-ը դառնում է paid)
+- Kanban-ում 4 սյունակ է։ `lost`-ը («Չկայացած») չի ցուցադրվում, ընտրվում է միայն խմբագրման պատուհանում։ «Վճարված» սյունակում երևում են վերջին 6-ը
+- Գործարքների աղյուսակը ցույց է տալիս ընտրված ամսվա վերջից դեպի հետ՝ 10-ական («Ցույց տալ ավելին»)
+
+**Մնացել է (AI-ից հետո).** «Սկանավորել չեկ», «Ներմուծել CSV», AI վերլուծություն, սեփական կատեգորիաներ ավելացնել (API-ն դեռ չունի)։
+
+**API.**
+| Endpoint | Ինչ է անում |
+|---|---|
+| `GET /api/finance/summary?month=` | 4 KPI + մարժա + սպասվողներ |
+| `GET /api/finance/monthly?month=&months=6` | Եկամուտ/ծախս ըստ ամիսների |
+| `GET /api/finance/sources?month=` | Եկամուտն ըստ կատեգորիաների (%) |
+| `GET /api/finance/categories` | Կատեգորիաներ (default + օգտատիրոջ) |
+| `GET/POST /api/finance/deals`, `PATCH/DELETE /api/finance/deals/{id}` | Kanban |
+| `GET/POST /api/finance/transactions`, `PATCH/DELETE /api/finance/transactions/{id}` | Գործարքներ (`?month=&limit=&offset=`) |
+
+---
+
 ## 12. Հաջորդ քայլեր (ընդհանուր)
-- [x] Մաս 1-ի կոդը (Վիճակագրություն) — մնում է MySQL-ով գործարկել
-- [ ] Մյուս էջերը՝ մեկ առ մեկ
-- [ ] Բացել GitHub repo (`git init` այս թղթապանակում)
+- [x] Մաս 1-ի կոդը (Վիճակագրություն)
+- [x] Մաս 2՝ Ֆինանսներ
+- [ ] Մյուս էջերը՝ մեկ առ մեկ (Նամակներ ու բոտեր, Մրցակիցներ, AI օգնական, Գլխավոր՝ վերջում)
+- [x] GitHub repo՝ https://github.com/LevonAghakaryan/naiva-dashboard (branch `main`)
 - [ ] Ստեղծել Meta Developer app և պատրաստվել App Review-ին
 - [ ] Ընտրել վերջնական անունը և դոմենը
 - [ ] Auth + Instagram միացում + գիշերային sync

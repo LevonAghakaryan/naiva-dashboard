@@ -6,6 +6,7 @@ from app.models.analytics import (
     Post,
     PostStats,
 )
+from app.models.finance import Category, Deal, Transaction
 from app.models.ig_account import IgAccount
 from app.models.user import User
 
@@ -17,4 +18,7 @@ __all__ = [
     "PostStats",
     "AudienceStats",
     "AudienceOnlineHours",
+    "Category",
+    "Deal",
+    "Transaction",
 ]

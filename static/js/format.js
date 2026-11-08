@@ -28,6 +28,24 @@
       return "֏" + fmt.full(n);
     },
 
+    /** 1240000 → ֏1.24M, 310000 → ֏310K, -12400 → −֏12.4K */
+    amdShort(n) {
+      n = Number(n) || 0;
+      const abs = Math.abs(n);
+      const sign = n < 0 ? "−" : "";
+      let body;
+      if (abs >= 1e6) body = (abs / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+      else if (abs >= 1e3) body = trim(abs / 1e3) + "K";
+      else body = String(Math.round(abs));
+      return sign + "֏" + body;
+    },
+
+    /** "2026-11-05" → "Նոյ 5" (date-only strings are read as local dates) */
+    dayMonth(iso) {
+      const [, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+      return `${MONTHS[m - 1]} ${d}`;
+    },
+
     percent(n) {
       return trim(Number(n) || 0) + "%";
     },

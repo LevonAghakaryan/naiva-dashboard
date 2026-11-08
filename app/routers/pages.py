@@ -28,3 +28,8 @@ def home():
 @router.get("/analytics")
 def analytics_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
     return templates.TemplateResponse(request, "analytics.html", _page_context(account, "analytics"))
+
+
+@router.get("/finance")
+def finance_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
+    return templates.TemplateResponse(request, "finance.html", _page_context(account, "finance"))
