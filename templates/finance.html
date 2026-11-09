@@ -2,200 +2,234 @@
 
 {% block title %}Ֆինանսներ{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/finance.css') }}">
+{% endblock %}
+
+
+
 {% block content %}
-<header class="page-header">
-  <div>
-    <h1>Ֆինանսներ</h1>
-    <div class="month-nav">
-      <button class="icon-btn" id="month-prev" type="button" aria-label="Նախորդ ամիս">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
-      </button>
-      <span class="muted" id="month-label" aria-live="polite"></span>
-      <button class="icon-btn" id="month-next" type="button" aria-label="Հաջորդ ամիս">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-      </button>
+{% set ico = {
+  "in": '<path d="M17 7 7 17M7 9v8h8"/>',
+  "out": '<path d="M7 17 17 7M9 7h8v8"/>',
+  "plus": '<path d="M12 5v14M5 12h14"/>',
+  "x": '<path d="M6 6l12 12M18 6 6 18"/>',
+  "left": '<path d="m15 6-6 6 6 6"/>',
+  "right": '<path d="m9 6 6 6-6 6"/>',
+  "cal": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  "filter": '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+  "down": '<path d="m6 9 6 6 6-6"/>',
+  "back": '<path d="M21 5H8l-6 7 6 7h13zM12 9l6 6M18 9l-6 6"/>',
+} %}
+<div class="fin" id="fin">
+  <!-- 1. Header -->
+  <header class="fin-head">
+    <div class="fin-title">
+      <h1>Ֆինանսներ</h1>
+      <div class="month-pill desk-only">
+        <button class="icon-btn" type="button" data-month="-1" aria-label="Նախորդ ամիս"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.left|safe }}</svg></button>
+        <span class="month-label" aria-live="polite"></span>
+        <button class="icon-btn" type="button" data-month="1" aria-label="Հաջորդ ամիս"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.right|safe }}</svg></button>
+      </div>
+      <p class="month-label mob-only"></p>
     </div>
-  </div>
-  <div class="header-actions">
-    <button class="btn" type="button" disabled title="Շուտով">Սկանավորել չեկ</button>
-    <button class="btn" type="button" disabled title="Շուտով">Ներմուծել CSV</button>
-    <button class="btn btn-primary" id="add-btn" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      Ավելացնել
+    <button class="btn btn-primary desk-only" type="button" data-add aria-expanded="false" aria-controls="add-form">
+      <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.plus|safe }}</svg>Ավելացնել գործարք
     </button>
-  </div>
-</header>
-
-<div id="page-error" class="alert" hidden></div>
-
-<section class="kpi-grid kpi-grid-3" id="kpis" aria-live="polite">
-  {% for _ in range(3) %}<div class="card kpi is-loading"><div class="skeleton"></div></div>{% endfor %}
-</section>
-
-<section class="grid-2-1">
-  <div class="card">
-    <div class="card-head">
-      <h2>Եկամուտ և ծախս</h2>
-      <div class="legend">
-        <span><i style="background:var(--accent)"></i>Եկամուտ</span>
-        <span><i style="background:var(--amber)"></i>Ծախս</span>
+    <div class="mob-only month-pop-wrap">
+      <button class="sq-btn" type="button" id="month-pop-btn" aria-label="Ընտրել ամիսը" aria-expanded="false" aria-controls="month-pop">
+        <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.cal|safe }}</svg>
+      </button>
+      <div class="month-pop" id="month-pop" hidden>
+        <button class="icon-btn" type="button" data-month="-1" aria-label="Նախորդ ամիս"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.left|safe }}</svg></button>
+        <span class="month-label"></span>
+        <button class="icon-btn" type="button" data-month="1" aria-label="Հաջորդ ամիս"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.right|safe }}</svg></button>
       </div>
     </div>
-    <div class="chart-box"><canvas id="cash-chart" role="img" aria-label="Եկամուտ և ծախս՝ վերջին 6 ամիսը"></canvas></div>
-  </div>
+  </header>
 
-  <div class="card">
-    <div class="card-head"><h2 id="sources-title">Եկամուտն ըստ կատեգորիայի</h2></div>
-    <div id="sources"><div class="skeleton tall"></div></div>
-  </div>
-</section>
+  <div id="page-error" class="alert" hidden></div>
 
-<section class="grid-2-1">
-  <div class="card">
-    <div class="card-head">
-      <h2>Համագործակցություններ</h2>
-      <span class="muted small" id="deals-meta"></span>
+  <!-- 2. Desktop add form (opens under the header) -->
+  <form class="card add-form" id="add-form" novalidate hidden>
+    <div class="add-row">
+      <h2 class="add-heading" id="add-heading" hidden>Խմբագրել գործարքը</h2>
+      <div class="seg-type" role="group" aria-label="Տեսակ">
+        <button type="button" data-add-type="income" aria-pressed="false">+ Եկամուտ</button>
+        <button type="button" data-add-type="expense" aria-pressed="true">− Ծախս</button>
+      </div>
     </div>
-    <div class="kanban" id="kanban"></div>
-    <p class="muted small kanban-hint">Քարտը քաշեք այլ սյունակ կամ սեղմեք <b>→</b>՝ հաջորդ փուլ տանելու համար։
-      «Պայմանագիր» և «Կատարման մեջ» փուլերի գումարը սպասվող է, իսկ «Վճարված» սյունակում այն ավտոմատ ավելանում է եկամուտին։</p>
-  </div>
-
-  <div class="card ai-card">
-    <div class="card-head">
-      <h2 class="ai-title">
-        <span class="ai-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg></span>
-        AI վերլուծություն
-      </h2>
-      <span class="badge">Շուտով</span>
+    <div class="add-grid">
+      <label class="field"><span>Նկարագրություն</span>
+        <input id="add-title" type="text" maxlength="255" placeholder="օր.՝ Nova Telecom · stories" autocomplete="off"></label>
+      <label class="field"><span>Գումար, ֏</span>
+        <input id="add-amount" type="text" inputmode="numeric" placeholder="0" autocomplete="off"></label>
     </div>
-    <p class="muted">Այստեղ AI-ը կվերլուծի ձեր եկամուտներն ու ծախսերը և կտա խորհուրդներ՝ օրինակ, որ աղբյուրից եք շատ կախված, կամ որ ծախսն է աճել միջինից ավելի։</p>
-    <button class="btn btn-block" type="button" disabled title="Շուտով">Հարցնել ավելին</button>
-  </div>
-</section>
-
-<section class="card">
-  <div class="card-head">
-    <h2>Գործարքներ <span class="muted small" id="tx-meta"></span></h2>
-    <div class="tabs" role="tablist" id="type-tabs" aria-label="Տեսակ">
-      <button class="tab is-active" type="button" role="tab" aria-selected="true" data-type="">Բոլորը</button>
-      <button class="tab" type="button" role="tab" aria-selected="false" data-type="income">Եկամուտ</button>
-      <button class="tab" type="button" role="tab" aria-selected="false" data-type="expense">Ծախս</button>
+    <div class="field"><span>Կատեգորիա</span><div class="chips" id="add-cats"></div></div>
+    <div class="add-grid">
+      <div class="field"><span>Օր</span>
+        <div class="day-pick">
+          <div class="seg-small" role="group" aria-label="Օր">
+            <button type="button" data-day="today">Այսօր</button>
+            <button type="button" data-day="yesterday">Երեկ</button>
+            <button type="button" data-day="other" aria-expanded="false">Այլ օր <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.down|safe }}</svg></button>
+          </div>
+          <div class="mini-cal" hidden></div>
+        </div>
+      </div>
+      <div class="field"><span>Կարգավիճակ</span>
+        <div class="seg-small" role="group" aria-label="Կարգավիճակ">
+          <button type="button" data-status="done">Կատարված</button>
+          <button type="button" data-status="pending" class="is-pending">Սպասվող</button>
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="chips" id="cat-chips" hidden></div>
-  <div class="table-wrap">
-    <table class="table table-tx" id="tx-table">
-      <thead>
-        <tr>
-          <th>Ամսաթիվ</th>
-          <th>Նկարագրություն</th>
-          <th>Կատեգորիա</th>
-          <th>Կարգավիճակ</th>
-          <th class="num">Գումար</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-  <p class="muted small empty" id="tx-empty" hidden>Գործարքներ դեռ չկան։ Սեղմեք «Ավելացնել»։</p>
-  <div class="more-wrap"><button class="btn" id="tx-more" type="button" hidden>Ցույց տալ ավելին</button></div>
-</section>
-
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-
-<!-- Add / edit modal -->
-<dialog class="modal" id="modal" aria-labelledby="modal-title">
-  <div class="modal-head">
-    <h2 id="modal-title">Ավելացնել</h2>
-    <button class="icon-btn" type="button" data-close aria-label="Փակել">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-    </button>
-  </div>
-
-  <div class="tabs modal-tabs" role="tablist" id="modal-tabs">
-    <button class="tab is-active" type="button" role="tab" aria-selected="true" data-form="tx-form">Եկամուտ / ծախս</button>
-    <button class="tab" type="button" role="tab" aria-selected="false" data-form="deal-form">Համագործակցություն</button>
-  </div>
-
-  <form id="tx-form" class="form" novalidate>
-    <div class="seg" role="radiogroup" aria-label="Տեսակ">
-      <label><input type="radio" name="type" value="income" checked><span>Եկամուտ</span></label>
-      <label><input type="radio" name="type" value="expense"><span>Ծախս</span></label>
-    </div>
-    <div class="form-row">
-      <label class="field">
-        <span>Գումար, ֏</span>
-        <input name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required>
-      </label>
-      <label class="field">
-        <span>Ամսաթիվ</span>
-        <input name="occurred_at" type="date" required>
-      </label>
-    </div>
-    <label class="field">
-      <span>Նկարագրություն</span>
-      <input name="description" type="text" maxlength="255" placeholder="օր.՝ Stories գովազդ · Lumen Cosmetics">
-    </label>
-    <div class="form-row">
-      <label class="field">
-        <span>Կատեգորիա</span>
-        <select name="category_id"></select>
-      </label>
-      <label class="field">
-        <span>Կարգավիճակ</span>
-        <select name="status">
-          <option value="paid">Վճարված</option>
-          <option value="pending">Սպասվող</option>
-        </select>
-      </label>
-    </div>
-    <p class="form-error" hidden></p>
+    <p class="form-error" id="add-error" role="alert" hidden></p>
     <div class="form-actions">
-      <button class="btn btn-danger" type="button" data-delete hidden>Ջնջել</button>
-      <button class="btn" type="button" data-close>Չեղարկել</button>
-      <button class="btn btn-primary" type="submit">Պահպանել</button>
+      <button class="btn btn-danger form-del" type="button" data-edit-delete hidden>Ջնջել</button>
+      <button class="btn" type="button" data-add-cancel>Չեղարկել</button>
+      <button class="btn btn-primary" type="submit" id="add-submit">Պահպանել</button>
     </div>
   </form>
 
-  <form id="deal-form" class="form" novalidate hidden>
-    <label class="field">
-      <span>Բրենդ</span>
-      <input name="brand_name" type="text" maxlength="120" required placeholder="օր.՝ City Mall">
-    </label>
-    <label class="field">
-      <span>Ինչ է պետք անել</span>
-      <input name="deliverables" type="text" maxlength="255" placeholder="օր.՝ 2 Reels + 3 stories">
-    </label>
-    <div class="form-row">
-      <label class="field">
-        <span>Գումար, ֏</span>
-        <input name="amount" type="number" min="0" step="0.01" inputmode="decimal">
-      </label>
-      <label class="field">
-        <span>Վերջնաժամկետ</span>
-        <input name="due_date" type="date">
-      </label>
+  <!-- 3. Balance / income / expense -->
+  <section class="fin-cards" aria-live="polite">
+    <div class="card balance">
+      <div class="balance-top">
+        <span class="balance-label" id="bal-label">Մնացորդ · այս ամիս</span>
+        <span class="bal-pill" id="bal-pill" hidden></span>
+      </div>
+      <div class="balance-value" id="bal-value">—</div>
+      <div class="spent-track" aria-hidden="true"><span id="bal-bar"></span></div>
+      <p class="balance-note" id="bal-spent"></p>
+      <p class="balance-forecast" id="bal-forecast" hidden></p>
     </div>
-    <label class="field">
-      <span>Փուլ</span>
-      <select name="stage">
-        <option value="negotiation">Բանակցություն</option>
-        <option value="contract">Պայմանագիր</option>
-        <option value="in_progress">Կատարման մեջ</option>
-        <option value="paid">Վճարված</option>
-        <option value="lost">Չկայացած</option>
-      </select>
-    </label>
-    <p class="muted small">«Վճարված» փուլին անցնելիս եկամուտն ավտոմատ կավելանա գործարքների մեջ։</p>
-    <p class="form-error" hidden></p>
-    <div class="form-actions">
-      <button class="btn btn-danger" type="button" data-delete hidden>Ջնջել</button>
-      <button class="btn" type="button" data-close>Չեղարկել</button>
-      <button class="btn btn-primary" type="submit">Պահպանել</button>
+    <div class="card money income">
+      <div class="money-head"><span class="ico-sq in"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.in|safe }}</svg></span>Եկամուտ</div>
+      <div class="money-value" id="inc-value">—</div>
+      <p class="money-meta" id="inc-meta"></p>
     </div>
-  </form>
-</dialog>
+    <div class="card money expense">
+      <div class="money-head"><span class="ico-sq out"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.out|safe }}</svg></span>Ծախս</div>
+      <div class="money-value" id="exp-value">—</div>
+      <p class="money-meta" id="exp-meta"></p>
+    </div>
+  </section>
+
+  <button class="btn btn-primary btn-add-big mob-only" type="button" data-add>
+    <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.plus|safe }}</svg>Ավելացնել գործարք
+  </button>
+
+  <!-- 4. Main: transactions (left) + calendar & pending (right) -->
+  <div class="fin-main">
+    <section class="card cal-card" aria-labelledby="cal-title">
+      <div class="cal-head">
+        <h2 id="cal-title" class="month-label"></h2>
+        <button class="help-btn" type="button" id="cal-help-btn" aria-expanded="false" aria-controls="cal-help" aria-label="Ինչպես կարդալ օրացույցը">?</button>
+      </div>
+      <div class="cal-legend"><span><i class="dot in"></i>Եկամուտ</span><span><i class="dot out"></i>Ծախս</span><span><i class="dot wait"></i>Սպասվող</span></div>
+      <div class="cal-help" id="cal-help" hidden>
+        <p><i class="sw pos"></i>Կանաչ օր՝ եկամուտը ծախսից շատ է կամ հավասար։ <i class="sw neg"></i>Կարմիր օր՝ ծախսն ավելի շատ է։</p>
+        <p>Մուգ գույն՝ օրվա տարբերությունը ֏100,000-ից ավելի է։</p>
+        <p>Կետերը ցույց են տալիս, որ այդ օրը կա եկամուտ, ծախս կամ սպասվող գործարք։</p>
+        <p>Սեղմիր օրվա վրա՝ տեսնելու միայն այդ օրվա գործարքները։</p>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-day" id="cal-day" hidden></div>
+    </section>
+
+    <section class="card pend-card desk-only" id="pend-card" aria-label="Սպասվող գործարքներ" hidden></section>
+
+    <!-- Mobile: sticky category menu -->
+    <div class="filter-bar mob-only" id="filter-bar">
+      <div class="seg3" role="group" aria-label="Տեսակ" data-type-seg></div>
+      <div class="cat-menu-wrap">
+        <button class="cat-menu-btn" type="button" id="cat-menu-btn" aria-expanded="false" aria-controls="cat-menu"></button>
+        <div class="cat-menu" id="cat-menu" hidden></div>
+      </div>
+    </div>
+
+    <section class="card tx-card" aria-labelledby="tx-title">
+      <div class="tx-head">
+        <h2 id="tx-title">Գործարքներ</h2>
+        <button class="pend-toggle mob-only" type="button" id="pend-toggle" aria-expanded="false" aria-controls="pend-panel" hidden></button>
+        <div class="tx-tools desk-only">
+          <div class="seg3" role="group" aria-label="Տեսակ" data-type-seg></div>
+          <button class="btn btn-sm" type="button" id="cat-edit" aria-pressed="false">Խմբագրել</button>
+        </div>
+      </div>
+      <div class="pend-panel mob-only" id="pend-panel" hidden></div>
+      <div class="desk-only">
+        <div class="chips" id="cat-chips"></div>
+        <p class="edit-hint" id="edit-hint" hidden>Ջնջված կատեգորիայի գործարքները կտեղափոխվեն «Այլ»։ «Այլ»-ը չի ջնջվում։</p>
+      </div>
+      <div class="day-filter" id="day-filter" hidden></div>
+      <ul class="tx-list" id="tx-list"></ul>
+      <p class="tx-empty" id="tx-empty" hidden>Այս ֆիլտրով գործարք չկա</p>
+      <div class="tx-foot"><span id="tx-count"></span><b id="tx-total"></b></div>
+    </section>
+  </div>
+
+  <!-- 5. Charts -->
+  <section class="fin-charts">
+    <div class="card">
+      <div class="chart-head">
+        <h2>Եկամուտ և ծախս · 6 ամիս</h2>
+        <div class="chart-legend"><span><i style="background:#047857"></i>Եկամուտ</span><span><i style="background:#F59E0B"></i>Ծախս</span></div>
+      </div>
+      <div class="chart-box-sm"><canvas id="bar-chart" role="img" aria-label="Եկամուտ և ծախս՝ վերջին 6 ամիսը"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><h2 id="share-title">Ծախսն ըստ կատեգորիաների</h2></div>
+      <div class="seg-small share-seg" role="group" aria-label="Տեսակ">
+        <button type="button" data-share="expense" aria-pressed="true">Ծախս</button>
+        <button type="button" data-share="income" aria-pressed="false">Եկամուտ</button>
+      </div>
+      <div id="shares" role="img"></div>
+    </div>
+    <div class="card">
+      <div class="chart-head"><h2>Մնացորդի դինամիկա</h2><b id="line-last"></b></div>
+      <div class="chart-box-sm"><canvas id="line-chart" role="img" aria-label="Մնացորդը ըստ ամիսների"></canvas></div>
+      <p class="chart-note" id="line-note"></p>
+    </div>
+  </section>
+</div>
+
+<!-- Mobile: full-screen add sheet -->
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-q" hidden>
+  <div class="sheet-top">
+    <button class="sq-btn" type="button" data-sheet-close aria-label="Փակել"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.x|safe }}</svg></button>
+    <div class="seg-type" role="group" aria-label="Տեսակ">
+      <button type="button" data-add-type="income" aria-pressed="false">+ Եկամուտ</button>
+      <button type="button" data-add-type="expense" aria-pressed="true">− Ծախս</button>
+    </div>
+    <button class="sq-btn sheet-del" type="button" data-edit-delete aria-label="Ջնջել գործարքը" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+  </div>
+  <p class="sheet-q" id="sheet-q"></p>
+  <div class="sheet-amount" id="sheet-amount" aria-live="polite">֏0</div>
+  <div class="tiles" id="sheet-cats"></div>
+  <div class="day-pick">
+    <div class="seg-small" role="group" aria-label="Օր">
+      <button type="button" data-day="today">Այսօր</button>
+      <button type="button" data-day="yesterday">Երեկ</button>
+      <button type="button" data-day="other" aria-expanded="false">Այլ օր <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.down|safe }}</svg></button>
+    </div>
+    <div class="mini-cal" hidden></div>
+  </div>
+  <div class="seg-small" role="group" aria-label="Կարգավիճակ">
+    <button type="button" data-status="done">Կատարված</button>
+    <button type="button" data-status="pending" class="is-pending">Սպասվող</button>
+  </div>
+  <input class="sheet-note" id="sheet-note" type="text" maxlength="255" placeholder="Նշում (ոչ պարտադիր)" aria-label="Նշում (ոչ պարտադիր)" autocomplete="off">
+  <div class="keypad" role="group" aria-label="Թվային ստեղնաշար">
+    {% for k in ["1","2","3","4","5","6","7","8","9","000","0"] %}<button type="button" data-key="{{ k }}">{{ k }}</button>{% endfor %}
+    <button type="button" data-key="back" aria-label="Ջնջել վերջին թվանշանը"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.back|safe }}</svg></button>
+  </div>
+  <button class="sheet-submit" type="button" id="sheet-submit"></button>
+</div>
+
+<div class="fin-toast" id="toast" role="status" aria-live="polite" hidden></div>
 {% endblock %}
 
 {% block scripts %}

@@ -1,9 +1,10 @@
-"""Demo finance data (deals + transactions) for the demo user. Used by scripts/seed.py.
+"""Demo finance data for the demo user (finance-spec.md §12). Used by scripts/seed.py.
 
-The current month is calibrated to the design (PROJECT.md §3, Ֆինանսներ):
-income ֏1.24M ▲18% (prev ֏1.05M), expense ֏310K (prev ֏290K), net ֏930K (margin 75%),
-pending ֏650K across 3 deals, income sources 62% / 21% / 11% / 6%.
-Current-month transactions are placed on days 1..today, so totals are exact on any day.
+Current month: income ֏707,600, expense ֏289,000, net ֏418,600 (41% spent),
+4 pending → forecast ֏788,800. Previous 5 months for the charts.
+Done transactions of the current month are clamped to days 1..today, so totals are exact on any day.
+
+Only the finance part:  .venv\\Scripts\\python.exe scripts\\seed.py --finance
 """
 from __future__ import annotations
 
@@ -15,88 +16,44 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Category, Deal, Transaction, User
+from app.services.finance_service import DEFAULT_CATEGORIES, add_months, month_end
 
-DEFAULT_CATEGORIES = [
-    ("Համագործակցություն", "income"), ("Գովազդ", "income"), ("Affiliate", "income"), ("Այլ եկամուտ", "income"),
-    ("Տեխնիկա", "expense"), ("Աշխատավարձ", "expense"), ("Ծրագրեր", "expense"),
-    ("Ճամփորդություն", "expense"), ("Այլ ծախս", "expense"),
-]
-
-# Previous 5 months (oldest → newest): total paid income / expense.
-HISTORY = [
-    (640_000, 180_000),
-    (720_000, 205_000),
-    (810_000, 195_000),
-    (930_000, 250_000),
-    (1_050_000, 290_000),
-]
-SOURCE_SHARES = {"Համագործակցություն": 0.60, "Գովազդ": 0.22, "Affiliate": 0.12, "Այլ եկամուտ": 0.06}
-
-# Current month: (day, description, category, amount, type)
-CURRENT_MONTH = [
-    (1, "Մոնտաժող (հոկտեմբեր)", "Աշխատավարձ", 120_000, "expense"),
-    (1, "Mountain Coffee · 4 stories", "Համագործակցություն", 168_800, "income"),
-    (2, "Stories գովազդ · Kino Park", "Գովազդ", 100_000, "income"),
-    (2, "Travel gear affiliate", "Affiliate", 93_800, "income"),
-    (3, "Booking affiliate", "Affiliate", 42_600, "income"),
-    (3, "Yerevan Wine Days · Reels", "Համագործակցություն", 250_000, "income"),
-    (4, "Տեսախցիկի ոսպնյակ", "Տեխնիկա", 148_000, "expense"),
-    (4, "Stories գովազդ · Pizza Sole", "Գովազդ", 70_400, "income"),
-    (5, "Nova Telecom · Carousel + stories", "Համագործակցություն", 350_000, "income"),  # paid deal
-    (6, "Ճամփորդություն Դիլիջան", "Ճամփորդություն", 29_600, "expense"),
-    (6, "Վարպետաց դաս (workshop)", "Այլ եկամուտ", 74_400, "income"),
-    (7, "CapCut Pro, Canva", "Ծրագրեր", 12_400, "expense"),
-    (8, "Stories գովազդ · Lumen Cosmetics", "Գովազդ", 90_000, "income"),
-]
-
-# (brand, deliverables, amount, stage, due in N days from today or None)
-DEALS = [
-    ("City Mall", "2 Reels + 3 stories", 600_000, "negotiation", 30),
-    ("Café Central", "3 stories", 120_000, "negotiation", None),
-    ("Ararat Fitness", "1 Reels + 2 stories", 250_000, "negotiation", 21),
-    ("Tour Armenia", "Reels շարք", 300_000, "contract", 17),
-    ("Grqaser Books", "1 Reels", 200_000, "in_progress", 4),
-    ("Silk Road Hotel", "5 stories", 150_000, "in_progress", 12),
-]
-PAID_DEAL = ("Nova Telecom", "Carousel + stories", 350_000)
-
+# Previous 5 months (oldest → newest): done income / expense.
+HISTORY = [(640_000, 180_000), (720_000, 210_000), (810_000, 190_000), (930_000, 260_000), (1_050_000, 290_000)]
+INCOME_SHARES = [("Համագործակցություն", 0.62), ("Գովազդ", 0.21), ("Affiliate", 0.11), ("Այլ եկամուտ", 0.06)]
+EXPENSE_SHARES = [("Աշխատավարձ", 0.45), ("Տեխնիկա", 0.25), ("Ծրագրեր", 0.08), ("Տրանսպորտ", 0.12), ("Այլ ծախս", 0.10)]
 HISTORY_NAMES = {
     "Համագործակցություն": ["Yerevan Mall · Reels", "Gold Coffee · stories", "Tufenkian Trekking · Reels",
                             "Sunny Hostel · 3 stories", "Dilijan Resort · Carousel"],
-    "Գովազդ": ["Stories գովազդ · Lumen Cosmetics", "Stories գովազդ · Kino Park", "Stories գովազդ · Pizza Sole"],
+    "Գովազդ": ["Lumen Cosmetics · stories", "Kino Park · stories", "Pizza Sole · stories"],
     "Affiliate": ["Booking affiliate", "Travel gear affiliate"],
     "Այլ եկամուտ": ["Վարպետաց դաս (workshop)", "Լուսանկարների վաճառք"],
+    "Աշխատավարձ": ["Մոնտաժող"],
+    "Տեխնիկա": ["Միկրոֆոն", "Լույս, շտատիվ"],
+    "Ծրագրեր": ["CapCut Pro, Canva"],
+    "Տրանսպորտ": ["Տաքսի, նկարահանման օր", "Բենզին"],
+    "Այլ ծախս": ["Այլ ծախսեր"],
 }
-HISTORY_EXPENSES = [
-    ("Մոնտաժող", "Աշխատավարձ", 0.55),
-    ("CapCut Pro, Canva", "Ծրագրեր", 0.06),
-    ("Ճամփորդության ծախսեր", "Ճամփորդություն", 0.24),
-    ("Այլ ծախսեր", "Այլ ծախս", 0.15),
+
+# Current month: (day, title, category, signed amount, status)
+CURRENT_MONTH = [
+    (7, "Tour Armenia · կանխավճար", "Համագործակցություն", 225_000, "paid"),
+    (7, "Տաքսի, նկարահանման օր", "Տրանսպորտ", -8_600, "paid"),
+    (6, "CapCut Pro, Canva", "Ծրագրեր", -12_400, "paid"),
+    (5, "Nova Telecom · Carousel + stories", "Համագործակցություն", 350_000, "paid"),
+    (4, "Տեսախցիկի ոսպնյակ", "Տեխնիկա", -148_000, "paid"),
+    (3, "Booking affiliate", "Affiliate", 42_600, "paid"),
+    (2, "Lumen Cosmetics · stories", "Գովազդ", 90_000, "paid"),
+    (1, "Մոնտաժող (հոկտեմբեր)", "Աշխատավարձ", -120_000, "paid"),
+    (12, "Grqaser Books · Reels", "Համագործակցություն", 200_000, "pending"),
+    (20, "City Mall · կանխավճար", "Համագործակցություն", 300_000, "pending"),
+    (15, "Adobe Premiere բաժանորդագրություն", "Ծրագրեր", -9_800, "pending"),
+    (30, "Մոնտաժող (նոյեմբեր)", "Աշխատավարձ", -120_000, "pending"),
 ]
 
 
-def add_months(first: date, n: int) -> date:
-    idx = first.year * 12 + first.month - 1 + n
-    return date(idx // 12, idx % 12 + 1, 1)
-
-
-def ensure_default_categories(db: Session) -> dict[tuple[str, str], int]:
-    """Default categories come from db/schema.sql; add any that are missing (e.g. on a fresh SQLite)."""
-    existing = {(c.name, c.type): c.id for c in db.scalars(select(Category).where(Category.user_id.is_(None)))}
-    for name, type_ in DEFAULT_CATEGORIES:
-        if (name, type_) not in existing:
-            cat = Category(user_id=None, name=name, type=type_)
-            db.add(cat)
-            db.flush()
-            existing[(name, type_)] = cat.id
-    return existing
-
-
 def has_finance(db: Session, user_id: int) -> bool:
-    return bool(
-        db.scalar(select(func.count(Transaction.id)).where(Transaction.user_id == user_id))
-        or db.scalar(select(func.count(Deal.id)).where(Deal.user_id == user_id))
-    )
+    return bool(db.scalar(select(func.count(Transaction.id)).where(Transaction.user_id == user_id)))
 
 
 def delete_finance(db: Session, user_id: int) -> None:
@@ -115,45 +72,32 @@ def _split(total: int, shares: list[float], step: int = 100) -> list[int]:
 def seed_finance(db: Session, user: User, today: date | None = None, rng_seed: int = 7) -> None:
     rng = random.Random(rng_seed)
     today = today or date.today()
-    cats = ensure_default_categories(db)
     month_start = today.replace(day=1)
+    last_day = month_end(month_start).day
 
-    def tx(day: date, desc: str, cat: str, amount: int, type_: str, deal: Deal | None = None) -> Transaction:
+    cats: dict[str, Category] = {}
+    for name, type_ in DEFAULT_CATEGORIES:
+        cats[name] = Category(user_id=user.id, name=name, type=type_)
+        db.add(cats[name])
+    db.flush()
+
+    def tx(day: date, title: str, cat: str, amount: int, status: str = "paid") -> Transaction:
         return Transaction(
-            user_id=user.id, deal=deal, category_id=cats[(cat, type_)], type=type_,
-            amount=Decimal(amount), description=desc, status="paid", source="manual", occurred_at=day,
+            user_id=user.id, category_id=cats[cat].id, type="income" if amount > 0 else "expense",
+            amount=Decimal(abs(amount)), description=title, status=status, source="manual", occurred_at=day,
         )
 
-    # ----- previous 5 months -----
     for i, (income, expense) in enumerate(HISTORY):
         first = add_months(month_start, i - len(HISTORY))
-        days_in_month = (add_months(first, 1) - first).days
-        names = list(SOURCE_SHARES)
-        for cat, amount in zip(names, _split(income, [SOURCE_SHARES[n] for n in names])):
-            pieces = 3 if cat == "Համագործակցություն" else 2 if cat == "Գովազդ" else 1
-            for part in _split(amount, [1 / pieces] * pieces):
-                desc = rng.choice(HISTORY_NAMES[cat])
-                db.add(tx(first + timedelta(days=rng.randrange(days_in_month)), desc, cat, part, "income"))
-        for (desc, cat, _), amount in zip(HISTORY_EXPENSES, _split(expense, [s for *_, s in HISTORY_EXPENSES])):
-            db.add(tx(first + timedelta(days=rng.randrange(days_in_month)), desc, cat, amount, "expense"))
+        days = month_end(first).day
+        for shares, total, sign in ((INCOME_SHARES, income, 1), (EXPENSE_SHARES, expense, -1)):
+            for (cat, _), amount in zip(shares, _split(total, [s for _, s in shares])):
+                pieces = 3 if cat == "Համագործակցություն" else 2 if cat in ("Գովազդ", "Աշխատավարձ") else 1
+                for part in _split(amount, [1 / pieces] * pieces):
+                    day = first + timedelta(days=rng.randrange(days))
+                    db.add(tx(day, rng.choice(HISTORY_NAMES[cat]), cat, sign * part))
 
-    # ----- deals -----
-    for brand, deliverables, amount, stage, due_in in DEALS:
-        db.add(Deal(
-            user_id=user.id, brand_name=brand, deliverables=deliverables, amount=Decimal(amount),
-            stage=stage, due_date=today + timedelta(days=due_in) if due_in is not None else None,
-        ))
-    brand, deliverables, amount = PAID_DEAL
-    paid_deal = Deal(user_id=user.id, brand_name=brand, deliverables=deliverables,
-                     amount=Decimal(amount), stage="paid", due_date=month_start + timedelta(days=min(4, today.day - 1)))
-    db.add(paid_deal)
+    for day, title, cat, amount, status in CURRENT_MONTH:
+        day = min(day, today.day) if status == "paid" else min(day, last_day)
+        db.add(tx(month_start + timedelta(days=day - 1), title, cat, amount, status))
     db.flush()
-
-    # ----- current month (days clamped to today) -----
-    for day, desc, cat, amount, type_ in CURRENT_MONTH:
-        occurred = month_start + timedelta(days=min(day, today.day) - 1)
-        deal = paid_deal if desc.startswith(PAID_DEAL[0]) else None
-        db.add(tx(occurred, desc, cat, amount, type_, deal))
-    db.flush()
-
-

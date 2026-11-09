@@ -309,4 +309,4 @@ CREATE TABLE ai_usage (
 -- Default categories
 INSERT INTO categories (user_id, name, type) VALUES
  (NULL,'Համագործակցություն','income'),(NULL,'Գովազդ','income'),(NULL,'Affiliate','income'),(NULL,'Այլ եկամուտ','income'),
- (NULL,'Տեխնիկա','expense'),(NULL,'Աշխատավարձ','expense'),(NULL,'Ծրագրեր','expense'),(NULL,'Ճամփորդություն','expense'),(NULL,'Այլ ծախս','expense');
+ (NULL,'Տեխնիկա','expense'),(NULL,'Աշխատավարձ','expense'),(NULL,'Ծրագրեր','expense'),(NULL,'Տրանսպորտ','expense'),(NULL,'Այլ ծախս','expense');

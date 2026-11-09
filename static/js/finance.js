@@ -1,694 +1,861 @@
-/* "Ֆինանսներ" page */
+/* Finance page (finance-spec.md). All numbers come from GET /api/finance/page; after every change
+   the page data is fetched again, so cards, list, calendar and charts always agree. */
 (function () {
-  const API = "/api/finance";
-  const COLORS = { accent: "#2563EB", amber: "#F59E0B", grid: "#EEF1F5", muted: "#5B6577", text: "#0F172A" };
-  const SOURCE_COLORS = ["#2563EB", "#60A5FA", "#F59E0B", "#94A3B8", "#A78BFA", "#34D399"];
-  const TX_PAGE = 10;
-  const STAGES = ["negotiation", "contract", "in_progress", "paid"];
-  const STAGE_LABELS = { negotiation: "Բանակցություն", contract: "Պայմանագիր", in_progress: "Կատարման մեջ", paid: "Վճարված", lost: "Չկայացած" };
-  const PENDING_STAGES = ["contract", "in_progress"];
-
-  const today = new Date();
-  const currentMonth = monthKey(today.getFullYear(), today.getMonth() + 1);
-
-  const state = {
-    month: currentMonth, categories: [], deals: new Map(), tx: [], txTotal: 0, editing: null,
-    filter: { type: "", category: null },  // type: "" | "income" | "expense"
-    kpi: null, pending: null, flashDeal: null,
-  };
-  let cashChart = null;
-
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const esc = fmt.escape;
 
-  function monthKey(y, m) {
-    return `${y}-${String(m).padStart(2, "0")}`;
+  const MONTHS_FULL = ["Հունվար", "Փետրվար", "Մարտ", "Ապրիլ", "Մայիս", "Հունիս", "Հուլիս", "Օգոստոս",
+    "Սեպտեմբեր", "Հոկտեմբեր", "Նոյեմբեր", "Դեկտեմբեր"];
+  const WEEKDAYS = ["Երկ", "Երք", "Չրք", "Հնգ", "Ուրբ", "Շբթ", "Կիր"];
+  const C = { inc: "#047857", exp: "#B42318", amber: "#F59E0B", blue: "#2563EB" };
+  const MOBILE = window.matchMedia("(max-width: 767px)");
+  const UNDO_MS = 6000;
+  const TOAST_MS = 2400;
+
+  const ICON = {
+    in: '<path d="M17 7 7 17M7 9v8h8"/>',
+    out: '<path d="M7 17 17 7M9 7h8v8"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    check: '<path d="m5 12 5 5 9-10"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    filter: '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    left: '<path d="m15 6-6 6 6 6"/>',
+    right: '<path d="m9 6 6 6-6 6"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+  };
+  const svg = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>`;
+
+  // ---------- state ----------
+  const state = {
+    month: new URLSearchParams(location.search).get("month") || "",
+    data: null,
+    type: "all", // all | income | expense
+    cat: null, // category id
+    day: null, // "2026-11-07"
+    editCats: false,
+    catMenu: false,
+    newCat: null, // {where: "chips"|"menu", type, error}
+    pendingOpen: false,
+    undo: null, // {item, timer}
+    help: false,
+    share: "expense",
+  };
+  // The same form adds a new transaction (edit = null) or edits one (edit = the transaction).
+  const add = { open: false, type: "expense", cat: null, day: "today", status: "done", digits: "",
+    calOpen: false, calMonth: null, newCat: null, error: "", edit: null };
+  let charts = { bar: null, line: null };
+
+  // ---------- formatting ----------
+  const money = (n) => (n < 0 ? "−" : "") + fmt.amd(Math.abs(n));
+  const signedMoney = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + fmt.amd(Math.abs(n));
+  const dayLabel = (iso) => fmt.dayMonth(iso);
+  const typeOf = (amount) => (amount > 0 ? "income" : "expense");
+
+  function isoAdd(iso, days) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d + days));
+    return t.toISOString().slice(0, 10);
   }
-
-  function shiftMonth(key, n) {
-    const [y, m] = key.split("-").map(Number);
+  const monthOf = (iso) => iso.slice(0, 7);
+  function shiftMonth(ym, n) {
+    const [y, m] = ym.split("-").map(Number);
     const idx = y * 12 + (m - 1) + n;
-    return monthKey(Math.floor(idx / 12), (idx % 12) + 1);
+    return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
   }
-
-  function isoToday() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
+  const monthName = (ym) => MONTHS_FULL[Number(ym.slice(5, 7)) - 1];
+  const monthTitle = (ym) => `${monthName(ym)} ${ym.slice(0, 4)}`;
 
   // ---------- API ----------
-  async function api(path, { method = "GET", params, body } = {}) {
-    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    const res = await fetch(`${API}${path}${qs}`, {
+  async function api(method, url, body) {
+    const res = await fetch(url, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: body ? { "Content-Type": "application/json" } : {},
       body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 204) return null;
-    let data = null;
-    try { data = await res.json(); } catch (_) { /* not JSON */ }
-    if (!res.ok) throw new Error(errorText(data, res.status));
-    return data;
-  }
-
-  function errorText(data, status) {
-    const d = data && data.detail;
-    if (typeof d === "string") return d;
-    if (Array.isArray(d) && d.length) {
-      const field = d[0].loc ? d[0].loc[d[0].loc.length - 1] : "";
-      const names = { amount: "Գումար", occurred_at: "Ամսաթիվ", brand_name: "Բրենդ", due_date: "Վերջնաժամկետ", description: "Նկարագրություն", name: "Անուն" };
-      return `${names[field] || field}՝ սխալ արժեք։`;
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const d = json.detail;
+      throw new Error(typeof d === "string" ? d : "Սխալ տեղի ունեցավ։ Փորձիր նորից։");
     }
-    return `Սխալ (${status})`;
+    return json;
   }
 
-  function showError(err) {
-    const box = $("#page-error");
-    box.textContent = err.message || String(err);
-    box.hidden = false;
+  async function load(month) {
+    const q = month ? `?month=${month}` : "";
+    try {
+      state.data = await api("GET", `/api/finance/page${q}`);
+      $("#page-error").hidden = true;
+    } catch (e) {
+      $("#page-error").textContent = e.message;
+      $("#page-error").hidden = false;
+      return;
+    }
+    state.month = state.data.month;
+    const url = new URL(location.href);
+    url.searchParams.set("month", state.month);
+    history.replaceState(null, "", url);
+    render();
   }
 
-  function pill(kpi) {
-    if (kpi.change_pct === null || kpi.change_pct === undefined) return `<span class="pill flat">—</span>`;
-    const arrow = kpi.direction === "up" ? "▲" : kpi.direction === "down" ? "▼" : "";
-    const cls = kpi.direction === "flat" ? "flat" : kpi.good ? "up" : "down";
-    return `<span class="pill ${cls}">${arrow} ${fmt.percent(Math.abs(kpi.change_pct))}</span>`;
+  // ---------- derived ----------
+  const cats = () => state.data.categories;
+  const catById = (id) => cats().find((c) => c.id === id);
+  const catsOfType = (type) => cats().filter((c) => type === "all" || c.type === type);
+
+  function visibleTx() {
+    return state.data.transactions.filter((t) =>
+      (state.type === "all" || typeOf(t.amount) === state.type) &&
+      (state.cat === null || t.category_id === state.cat) &&
+      (state.day === null || t.date === state.day));
   }
 
-  // ---------- KPI ----------
-  function renderSummary(s) {
-    $("#month-label").textContent = s.month_label;
-    $("#month-next").disabled = s.month >= currentMonth;
+  // ---------- render ----------
+  function render() {
+    renderHeader();
+    renderCards();
+    renderCalendar();
+    renderFilters();
+    renderList();
+    renderPending();
+    renderCharts();
+    if (add.open) renderAdd();
+  }
 
-    const card = (k, sub, extra = pill(k)) => `
-      <div class="card kpi">
-        <div class="kpi-top"><span class="kpi-label">${fmt.escape(k.label)}</span>${extra}</div>
-        <span class="kpi-value" title="${fmt.amd(k.value)}">${fmt.amdShort(k.value)}</span>
-        <div class="kpi-prev">${sub}</div>
-      </div>`;
+  function renderHeader() {
+    $$(".month-label").forEach((el) => (el.textContent = state.data.month_label));
+  }
 
-    const margin = s.margin_pct === null ? "—" : fmt.percent(s.margin_pct);
-    $("#kpis").innerHTML = [
-      card(s.income, `նախորդ ամիս՝ ${fmt.amdShort(s.income.previous)}`),
-      card(s.expense, `նախորդ ամիս՝ ${fmt.amdShort(s.expense.previous)}`),
-      card(s.net, `մարժա՝ ${margin} · եկամուտ − ծախս`),
-    ].join("");
+  function renderCards() {
+    const s = state.data.summary;
+    const isCurrent = monthOf(state.data.today) === state.month;
+    $("#bal-label").textContent = isCurrent ? "Մնացորդ · այս ամիս" : `Մնացորդ · ${state.data.month_label}`;
+    $("#bal-value").textContent = money(s.net);
+    const pill = $("#bal-pill");
+    pill.hidden = s.net_pct === null;
+    if (s.net_pct !== null) pill.textContent = `${s.net_pct > 0 ? "+" : s.net_pct < 0 ? "−" : ""}${Math.abs(s.net_pct)}% եկամտից`;
+    $("#bal-bar").style.width = `${s.spent_pct}%`;
+    $("#bal-spent").textContent = `Ծախսել ես եկամտի ${s.spent_pct}%-ը`;
+    const fc = $("#bal-forecast");
+    fc.hidden = s.forecast === null;
+    if (s.forecast !== null) fc.textContent = `Սպասվողներից հետո՝ ${money(s.forecast)}`;
 
-    // Highlight the cards whose value just changed (same month, after an action).
-    const prev = state.kpi;
-    if (prev && prev.month === s.month) {
-      [s.income, s.expense, s.net].forEach((k, i) => {
-        if (prev[k.key] !== k.value) $$("#kpis .kpi")[i].classList.add("flash");
+    const prev = monthName(shiftMonth(state.month, -1));
+    $("#inc-value").textContent = fmt.amd(s.income);
+    $("#inc-meta").textContent = `${s.income_count} գործարք · ${prev}՝ ${fmt.amd(s.prev_income)}`;
+    $("#exp-value").textContent = fmt.amd(s.expense);
+    $("#exp-meta").textContent = `${s.expense_count} գործարք · ${prev}՝ ${fmt.amd(s.prev_expense)}`;
+  }
+
+  // ---------- calendar ----------
+  function dayClass(d) {
+    if (!d.count) return "";
+    if (d.net >= 0) return d.net >= 100000 ? "pos2" : "pos";
+    return -d.net >= 100000 ? "neg2" : "neg";
+  }
+
+  function renderCalendar() {
+    const days = state.data.calendar;
+    const first = days[0].date;
+    const offset = (new Date(`${first}T00:00:00`).getDay() + 6) % 7;
+    let html = WEEKDAYS.map((w) => `<span class="cal-wd" aria-hidden="true">${w}</span>`).join("");
+    html += "<span></span>".repeat(offset);
+    for (const d of days) {
+      const parts = [dayLabel(d.date)];
+      if (d.income) parts.push(`եկամուտ ${fmt.amd(d.income)}`);
+      if (d.expense) parts.push(`ծախս ${fmt.amd(d.expense)}`);
+      if (d.pending) parts.push("կա սպասվող");
+      const dots = (d.income ? '<i class="dot in"></i>' : "") + (d.expense ? '<i class="dot out"></i>' : "") +
+        (d.pending ? '<i class="dot wait"></i>' : "");
+      const cls = ["cal-day-btn", dayClass(d), d.date === state.data.today ? "is-today" : "",
+        d.date === state.day ? "is-selected" : ""].join(" ");
+      html += `<button type="button" class="${cls}" data-date="${d.date}" aria-pressed="${d.date === state.day}"
+        aria-label="${esc(parts.join(", "))}"><span>${Number(d.date.slice(8))}</span><span class="dots">${dots}</span></button>`;
+    }
+    $("#cal-grid").innerHTML = html;
+
+    const box = $("#cal-day");
+    const sel = state.day && days.find((d) => d.date === state.day);
+    box.hidden = !sel;
+    if (sel) {
+      const bits = [dayLabel(sel.date)];
+      if (sel.income) bits.push(`<span class="pos-t">+${fmt.amd(sel.income)}</span>`);
+      if (sel.expense) bits.push(`<span class="neg-t">−${fmt.amd(sel.expense)}</span>`);
+      if (!sel.income && !sel.expense) bits.push("գործարք չկա");
+      box.innerHTML = `<span>${bits.join(" · ")}</span><button type="button" class="link-btn" data-clear-day>Ամբողջ ամիսը</button>`;
+    }
+    $("#cal-help").hidden = !state.help;
+    $("#cal-help-btn").setAttribute("aria-expanded", String(state.help));
+  }
+
+  // ---------- filters ----------
+  function renderFilters() {
+    const segHtml = [["all", "Բոլորը"], ["income", "Եկամուտ"], ["expense", "Ծախս"]]
+      .map(([v, l]) => `<button type="button" data-type="${v}" aria-pressed="${state.type === v}">${l}</button>`).join("");
+    $$("[data-type-seg]").forEach((el) => (el.innerHTML = segHtml));
+
+    const editBtn = $("#cat-edit");
+    editBtn.setAttribute("aria-pressed", String(state.editCats));
+    editBtn.textContent = state.editCats ? "Պատրաստ է" : "Խմբագրել";
+    $("#edit-hint").hidden = !state.editCats;
+
+    // Desktop chips
+    const typeCount = state.data.transactions.filter((t) => state.type === "all" || typeOf(t.amount) === state.type).length;
+    let chips = `<button type="button" class="chip${state.cat === null ? " is-active" : ""}" data-cat="" aria-pressed="${state.cat === null}">
+      Բոլորը <span class="cnt">${typeCount}</span></button>`;
+    for (const c of catsOfType(state.type)) {
+      const active = state.cat === c.id;
+      chips += `<span class="chip-wrap"><button type="button" class="chip${active ? " is-active" : ""}" data-cat="${c.id}" aria-pressed="${active}">
+        ${esc(c.name)} <span class="cnt">${c.count}</span></button>${state.editCats && !c.is_system
+        ? `<button type="button" class="chip-del" data-del-cat="${c.id}" aria-label="Ջնջել՝ ${esc(c.name)}">${svg("x")}</button>` : ""}</span>`;
+    }
+    chips += newCatHtml("chips");
+    $("#cat-chips").innerHTML = chips;
+
+    // Mobile dropdown
+    const selName = state.cat === null ? "Բոլորը" : (catById(state.cat) || {}).name || "Բոլորը";
+    const btn = $("#cat-menu-btn");
+    btn.innerHTML = `${svg("filter")}<span>Կատեգորիա՝ <b>${esc(selName)}</b></span><span class="cnt">${visibleTx().length}</span>${svg("down")}`;
+    btn.setAttribute("aria-expanded", String(state.catMenu));
+    const menu = $("#cat-menu");
+    menu.hidden = !state.catMenu;
+    if (state.catMenu) {
+      const row = (id, name, count, del) => {
+        const on = state.cat === id;
+        return `<div class="cm-row"><button type="button" class="cm-item${on ? " is-on" : ""}" data-cat="${id ?? ""}" aria-pressed="${on}">
+          <span class="cm-name">${esc(name)}</span>${count === null ? "" : `<span class="cnt">${count}</span>`}
+          <span class="cm-check">${on ? svg("check") : ""}</span></button>${del
+          ? `<button type="button" class="cm-del" data-del-cat="${id}" aria-label="Ջնջել՝ ${esc(name)}">${svg("trash")}</button>` : ""}</div>`;
+      };
+      let html = row(null, "Բոլոր կատեգորիաները", null, false);
+      for (const [type, title] of [["income", "Եկամտի կատեգորիաներ"], ["expense", "Ծախսի կատեգորիաներ"]]) {
+        if (state.type !== "all" && state.type !== type) continue;
+        html += `<div class="cm-group">${title}</div>`;
+        html += cats().filter((c) => c.type === type).map((c) => row(c.id, c.name, c.count, state.editCats && !c.is_system)).join("");
+      }
+      html += `<div class="cm-foot">${state.newCat && state.newCat.where === "menu" ? newCatHtml("menu")
+        : '<button type="button" class="link-btn" data-new-cat="menu">+ Նոր կատեգորիա</button>'}
+        <button type="button" class="link-btn" data-edit-toggle aria-pressed="${state.editCats}">${state.editCats ? "Պատրաստ է" : "Խմբագրել"}</button></div>`;
+      menu.innerHTML = html;
+    }
+  }
+
+  /** "+ Նոր կատեգորիա" chip, or the inline field when it is open there. */
+  function newCatHtml(where) {
+    const nc = state.newCat;
+    if (!nc || nc.where !== where) {
+      return where === "chips" ? '<button type="button" class="chip chip-add" data-new-cat="chips">+ Նոր կատեգորիա</button>' : "";
+    }
+    const typeSel = state.type === "all"
+      ? `<span class="seg-mini" role="group" aria-label="Կատեգորիայի տեսակ">
+          <button type="button" data-nc-type="income" aria-pressed="${nc.type === "income"}">Եկամուտ</button>
+          <button type="button" data-nc-type="expense" aria-pressed="${nc.type === "expense"}">Ծախս</button></span>` : "";
+    return `<form class="nc-form" data-nc-form="${where}" novalidate>
+      <input type="text" maxlength="80" placeholder="Նոր կատեգորիայի անուն" aria-label="Նոր կատեգորիայի անուն" value="${esc(nc.name || "")}">
+      ${typeSel}<button type="submit" class="btn btn-sm btn-primary">Ավելացնել</button>
+      <button type="button" class="icon-btn" data-nc-cancel aria-label="Փակել">${svg("x")}</button>
+      ${nc.error ? `<span class="nc-error" role="alert">${esc(nc.error)}</span>` : ""}</form>`;
+  }
+
+  // ---------- list ----------
+  function txRow(t) {
+    const inc = t.amount > 0;
+    return `<li><button type="button" class="tx ${inc ? "in" : "out"}" data-edit="${t.id}" aria-label="Խմբագրել՝ ${esc(t.title)}, ${signedMoney(t.amount)}">
+      <span class="tx-ico">${svg(inc ? "in" : "out")}</span>
+      <span class="tx-main"><span class="tx-title">${esc(t.title)}</span><span class="tx-sub">${esc(t.category)} · ${dayLabel(t.date)}</span></span>
+      <span class="tx-amt">${signedMoney(t.amount)}</span></button></li>`;
+  }
+
+  function renderList() {
+    const items = visibleTx();
+    $("#tx-list").innerHTML = items.map(txRow).join("");
+    $("#tx-empty").hidden = items.length > 0;
+    const total = items.reduce((s, t) => s + t.amount, 0);
+    $("#tx-count").textContent = `${items.length} գործարք`;
+    $("#tx-total").textContent = `Ընդամենը՝ ${signedMoney(total)}`;
+    const df = $("#day-filter");
+    df.hidden = !state.day;
+    if (state.day) {
+      df.innerHTML = `<span>Ցուցադրվում է՝ ${dayLabel(state.day)}</span>
+        <button type="button" class="icon-btn" data-clear-day aria-label="Հանել օրվա ֆիլտրը">${svg("x")}</button>`;
+    }
+  }
+
+  // ---------- pending ----------
+  function pendingRow(t) {
+    const inc = t.amount > 0;
+    return `<li class="pd ${inc ? "in" : "out"}">
+      <button type="button" class="pd-edit" data-edit="${t.id}" aria-label="Խմբագրել՝ ${esc(t.title)}, ${signedMoney(t.amount)}">
+      <span class="pd-ico">${svg("clock")}</span>
+      <span class="pd-main"><span class="pd-title">${esc(t.title)}</span>
+        <span class="pd-sub">${inc ? "Եկամուտ" : "Ծախս"} · ${dayLabel(t.date)}</span></span>
+      <span class="pd-amt">${signedMoney(t.amount)}</span></button>
+      <button type="button" class="pd-x" data-cancel="${t.id}" aria-label="Չեղարկել՝ ${esc(t.title)}">${svg("x")}</button>
+      <button type="button" class="pd-ok" data-confirm="${t.id}" aria-label="Հաստատել՝ ${esc(t.title)}">${svg("check")}</button></li>`;
+  }
+
+  function pendingBody() {
+    const p = state.data.pending;
+    let html = `<div class="pd-tiles">
+      <div class="pd-tile in"><span>Սպասվող եկամուտ</span><b>${signedMoney(p.income)}</b></div>
+      <div class="pd-tile out"><span>Սպասվող ծախս</span><b>${signedMoney(p.expense)}</b></div></div>`;
+    html += `<ul class="pd-list">${p.items.map(pendingRow).join("")}</ul>`;
+    if (state.undo) {
+      html += `<div class="undo" role="status"><span>«${esc(state.undo.item.title)}»-ը չեղարկվեց</span>
+        <button type="button" data-undo>Հետ բերել</button></div>`;
+    }
+    html += '<p class="pd-hint">✓ — կատարվել է (դառնում է եկամուտ/ծախս), ✕ — չեղարկել</p>';
+    return html;
+  }
+
+  function renderPending() {
+    const n = state.data.pending.items.length;
+    const show = n > 0 || !!state.undo;
+    const card = $("#pend-card");
+    card.hidden = !show;
+    if (show) {
+      card.innerHTML = `<div class="pd-head"><span class="pd-head-ico">${svg("clock")}</span><h2>Սպասվող</h2>
+        <span class="pd-count">${n}</span></div>${pendingBody()}`;
+    }
+    const toggle = $("#pend-toggle");
+    const panel = $("#pend-panel");
+    toggle.hidden = !show;
+    if (!show) state.pendingOpen = false;
+    toggle.innerHTML = `${svg("clock")}Սպասվող <span class="pd-count">${n}</span>${svg("down")}`;
+    toggle.setAttribute("aria-expanded", String(state.pendingOpen));
+    panel.hidden = !(show && state.pendingOpen);
+    if (show && state.pendingOpen) panel.innerHTML = pendingBody();
+  }
+
+  async function confirmPending(id) {
+    try {
+      await api("POST", `/api/finance/transactions/${id}/confirm`);
+      await load(state.month);
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function cancelPending(id) {
+    const item = state.data.pending.items.find((t) => t.id === id);
+    if (!item) return;
+    try {
+      await api("DELETE", `/api/finance/transactions/${id}`);
+    } catch (e) { toast(e.message, true); return; }
+    if (state.undo) clearTimeout(state.undo.timer);
+    state.undo = { item, timer: setTimeout(() => { state.undo = null; renderPending(); }, UNDO_MS) };
+    await load(state.month);
+  }
+
+  async function undoCancel() {
+    if (!state.undo) return;
+    const { item, timer } = state.undo;
+    clearTimeout(timer);
+    state.undo = null;
+    try {
+      await api("POST", "/api/finance/transactions", {
+        type: typeOf(item.amount), amount: Math.abs(item.amount), date: item.date,
+        title: item.title, category_id: item.category_id, status: "pending",
       });
-    }
-    const pendingChanged = state.pending && state.pending.value !== s.pending.value;
-    state.kpi = { month: s.month, income: s.income.value, expense: s.expense.value, net: s.net.value };
-    state.pending = s.pending;
-    renderDealsMeta();
-    const meta = $("#deals-meta");
-    meta.classList.remove("flash");
-    if (pendingChanged) { void meta.offsetWidth; meta.classList.add("flash"); }
+    } catch (e) { toast(e.message, true); }
+    await load(state.month);
   }
 
-  function renderDealsMeta() {
-    const p = state.pending;
-    if (!p) return;
-    const nearest = p.nearest_due ? ` · ամենամոտը՝ ${fmt.dayMonth(p.nearest_due)}` : "";
-    $("#deals-meta").textContent = p.value
-      ? `Սպասվող՝ ${fmt.amdShort(p.value)}${nearest}`
-      : "Սպասվող վճարում չկա";
-  }
-
-  // ---------- Toast ----------
-  let toastTimer = null;
-  function toast(msg) {
-    const el = $("#toast");
-    el.textContent = msg;
-    el.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
-  }
-
-  // ---------- Income vs expense chart ----------
-  const valueLabels = {
-    id: "valueLabels",
+  // ---------- charts ----------
+  const lastBarLabel = {
+    id: "lastBarLabel",
     afterDatasetsDraw(chart) {
-      const { ctx } = chart;
       const meta = chart.getDatasetMeta(0);
+      const bar = meta.data[meta.data.length - 1];
+      if (!bar) return;
+      const v = chart.data.datasets[0].data[meta.data.length - 1];
+      const { ctx } = chart;
       ctx.save();
-      ctx.font = "600 12px Inter, 'Noto Sans Armenian', sans-serif";
-      ctx.fillStyle = COLORS.text;
+      ctx.font = "600 11px Inter, sans-serif";
+      ctx.fillStyle = "#0F172A";
       ctx.textAlign = "center";
-      meta.data.forEach((bar, i) => {
-        const v = chart.data.datasets[0].data[i];
-        if (!v) return;
-        const x = (bar.x + chart.getDatasetMeta(1).data[i].x) / 2;
-        ctx.fillText(fmt.amdShort(v), x, bar.y - 8);
-      });
+      ctx.fillText(fmt.amdShort(v), bar.x, bar.y - 6);
       ctx.restore();
     },
   };
 
-  function renderMonthly(data) {
-    if (typeof Chart === "undefined") {
-      $("#cash-chart").replaceWith(Object.assign(document.createElement("p"), { className: "muted", textContent: "Գրաֆիկը չբեռնվեց (Chart.js)։" }));
-      return;
-    }
-    const labels = data.items.map((m) => m.label);
-    const income = data.items.map((m) => m.income);
-    const expense = data.items.map((m) => m.expense);
-    if (cashChart) cashChart.destroy();
-    cashChart = new Chart($("#cash-chart"), {
-      type: "bar",
-      data: {
+  function renderCharts() {
+    const m = state.data.monthly;
+    const labels = m.map((x) => x.label);
+    if (window.Chart) {
+      const grid = { color: "#EEF1F5", drawTicks: false };
+      const yTicks = { color: "#5B6577", font: { size: 11 }, padding: 6, maxTicksLimit: 4, callback: (v) => fmt.amdShort(v) };
+      const xAxis = { grid: { display: false }, border: { display: false }, ticks: { color: "#5B6577", font: { size: 11 } } };
+      const barData = {
         labels,
         datasets: [
-          { label: "Եկամուտ", data: income, backgroundColor: COLORS.accent, borderRadius: 6, maxBarThickness: 30 },
-          { label: "Ծախս", data: expense, backgroundColor: COLORS.amber, borderRadius: 6, maxBarThickness: 30 },
+          { label: "Եկամուտ", data: m.map((x) => x.income), backgroundColor: C.inc, borderRadius: 4, maxBarThickness: 18 },
+          { label: "Ծախս", data: m.map((x) => x.expense), backgroundColor: C.amber, borderRadius: 4, maxBarThickness: 18 },
         ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        layout: { padding: { top: 24 } },
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}՝ ${fmt.amd(ctx.parsed.y)}` } },
-        },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: COLORS.muted, font: { family: "Inter, Noto Sans Armenian" } } },
-          y: { display: false, beginAtZero: true, grace: "8%" },
-        },
-      },
-      plugins: [valueLabels],
-    });
-  }
-
-  // ---------- Sources ----------
-  function renderSources(data) {
-    const el = $("#sources");
-    const isIncome = data.type === "income";
-    $("#sources-title").textContent = isIncome ? "Եկամուտն ըստ կատեգորիայի" : "Ծախսն ըստ կատեգորիայի";
-    if (!data.items.length) {
-      el.innerHTML = `<p class="muted">Այս ամիս ${isIncome ? "վճարված եկամուտ" : "ծախս"} չկա։</p>`;
-      return;
+      };
+      if (charts.bar) { charts.bar.data = barData; charts.bar.update(); } else {
+        charts.bar = new Chart($("#bar-chart"), {
+          type: "bar", data: barData, plugins: [lastBarLabel],
+          options: {
+            responsive: true, maintainAspectRatio: false, layout: { padding: { top: 18 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                displayColors: false, filter: (i) => i.datasetIndex === 0,
+                callbacks: {
+                  title: () => "",
+                  label: (i) => { const r = state.data.monthly[i.dataIndex];
+                    return `${r.label} · եկամուտ ${fmt.amd(r.income)} · ծախս ${fmt.amd(r.expense)}`; },
+                },
+              },
+            },
+            scales: { x: xAxis, y: { beginAtZero: true, grid, border: { display: false }, ticks: yTicks } },
+          },
+        });
+      }
+      const nets = m.map((x) => x.income - x.expense);
+      const lineData = {
+        labels,
+        datasets: [{
+          data: nets, borderColor: C.blue, backgroundColor: "rgba(37, 99, 235, .08)", fill: true, tension: .35,
+          borderWidth: 2, pointRadius: nets.map((_, i) => (i === nets.length - 1 ? 5 : 0)),
+          pointHoverRadius: 5, pointBackgroundColor: C.blue,
+        }],
+      };
+      if (charts.line) { charts.line.data = lineData; charts.line.update(); } else {
+        charts.line = new Chart($("#line-chart"), {
+          type: "line", data: lineData,
+          options: {
+            responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 6 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: { displayColors: false, callbacks: { title: () => "", label: (i) => `${labels[i.dataIndex]} · ${money(i.raw)}` } },
+            },
+            scales: { x: xAxis, y: { grid, border: { display: false }, ticks: yTicks } },
+          },
+        });
+      }
+      $("#bar-chart").setAttribute("aria-label", "Եկամուտ և ծախս՝ վերջին 6 ամիսը. " +
+        m.map((x) => `${x.label}՝ եկամուտ ${fmt.amd(x.income)}, ծախս ${fmt.amd(x.expense)}`).join("; "));
+      $("#line-chart").setAttribute("aria-label", "Մնացորդը ըստ ամիսների. " +
+        m.map((x, i) => `${x.label}՝ ${money(nets[i])}`).join("; "));
+      $("#line-last").textContent = fmt.amdShort(nets[nets.length - 1]);
+      $("#line-note").textContent = `Եկամուտ − ծախս ամեն ամիս։ ${monthName(shiftMonth(state.month, -1))}՝ ${fmt.amdShort(nets[nets.length - 2])}`;
     }
-    const color = (i) => SOURCE_COLORS[i % SOURCE_COLORS.length];
-    el.innerHTML = `
-      <div class="stack-bar">${data.items.map((s, i) => `<span style="width:${s.percent}%;background:${color(i)}" title="${fmt.escape(s.label)} ${fmt.percent(s.percent)}"></span>`).join("")}</div>
-      <ul class="source-list">${data.items.map((s, i) => `
-        <li ${s.category_id ? `data-cat="${s.category_id}" data-type="${data.type}" title="Ցույց տալ այս կատեգորիայի գործարքները"` : ""}>
-          <span class="name"><i style="background:${color(i)}"></i>${fmt.escape(s.label)}</span>
-          <span class="pct">${fmt.percent(s.percent)}</span>
-          <span class="amt">${fmt.amd(s.amount)}</span>
-        </li>`).join("")}
-      </ul>`;
+
+    // Category shares
+    const type = state.share;
+    $("#share-title").textContent = type === "expense" ? "Ծախսն ըստ կատեգորիաների" : "Եկամուտն ըստ կատեգորիաների";
+    $$("[data-share]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.share === type)));
+    const rows = state.data.by_category[type];
+    const total = rows.reduce((s, r) => s + r.amount, 0);
+    const box = $("#shares");
+    box.setAttribute("aria-label", `${$("#share-title").textContent}. ` +
+      (rows.length ? rows.map((r) => `${r.name}՝ ${fmt.amd(r.amount)}, ${r.percent}%`).join("; ") : "Տվյալ չկա"));
+    box.innerHTML = rows.length
+      ? `<p class="share-total">Ընդամենը՝ <b>${fmt.amd(total)}</b></p><ul class="share-list ${type}">${rows.map((r) => `
+        <li><div class="share-row"><span class="share-name">${esc(r.name)}</span><span><b>${fmt.amd(r.amount)}</b>
+        <span class="share-pct">${r.percent}%</span></span></div><span class="share-track"><span style="width:${r.percent}%"></span></span></li>`).join("")}</ul>`
+      : '<p class="share-empty">Տվյալ չկա</p>';
   }
 
-  // ---------- Kanban ----------
-  function renderDeals(board) {
-    state.deals.clear();
-    board.columns.forEach((c) => c.items.forEach((d) => state.deals.set(d.id, d)));
-    board.lost.forEach((d) => state.deals.set(d.id, d));
-    renderDealsMeta();
-
-    $("#kanban").innerHTML = board.columns.map((c) => `
-      <div class="k-col" data-stage="${c.stage}">
-        <div class="k-head"><span>${fmt.escape(c.label)}</span><span class="muted">${c.count}</span></div>
-        <span class="k-total">${fmt.amdShort(c.total)}</span>
-        <div class="k-list">
-          ${c.items.map(dealCard).join("") || `<div class="k-empty">Դատարկ է</div>`}
-          ${c.stage === "paid" && c.count > c.items.length ? `<div class="k-empty">+${c.count - c.items.length} ավելի հին</div>` : ""}
-        </div>
-      </div>`).join("");
+  // ---------- add: shared state ----------
+  function resetAdd() {
+    Object.assign(add, { type: "expense", day: "today", status: "done", digits: "", calOpen: false,
+      calMonth: monthOf(state.data.today), newCat: null, error: "", edit: null });
+    add.cat = firstCat(add.type);
+    $("#add-title").value = "";
+    $("#add-amount").value = "";
+    $("#sheet-note").value = "";
   }
 
-  function dealCard(d) {
-    const due = d.due_date ? `<span class="k-due">${fmt.dayMonth(d.due_date)}</span>` : "";
-    const next = STAGES[STAGES.indexOf(d.stage) + 1];
-    const nextBtn = next
-      ? `<button class="k-next" type="button" data-next="${next}" title="Տեղափոխել «${STAGE_LABELS[next]}»" aria-label="Տեղափոխել «${STAGE_LABELS[next]}»">→</button>`
-      : "";
-    const flash = state.flashDeal === d.id ? " flash" : "";
-    return `
-      <div class="k-card${flash}" role="button" tabindex="0" draggable="true" data-id="${d.id}">
-        <span class="k-brand">${fmt.escape(d.brand_name)}</span>
-        ${d.deliverables ? `<span class="k-sub">${fmt.escape(d.deliverables)}</span>` : ""}
-        <span class="k-foot"><b>${fmt.amd(d.amount)}</b>${due}</span>
-        ${nextBtn}
-      </div>`;
+  /** Put an existing transaction into the form. */
+  function fillAdd(t) {
+    const today = state.data.today;
+    const day = t.date === today ? "today" : t.date === isoAdd(today, -1) ? "yesterday" : t.date;
+    const digits = String(Math.abs(t.amount));
+    Object.assign(add, { type: typeOf(t.amount), cat: t.category_id, day, status: t.status, digits,
+      calMonth: monthOf(t.date), edit: t });
+    // An empty description is stored as the category name — show it empty again.
+    const title = t.title === t.category ? "" : t.title;
+    $("#add-title").value = title;
+    $("#sheet-note").value = title;
+    $("#add-amount").value = Number(digits).toLocaleString("en-US");
   }
 
-  /** What changed in the money when a deal moves — shown as a toast. */
-  function moveMessage(deal, to) {
-    const from = deal.stage;
-    const name = deal.brand_name;
-    const amt = fmt.amd(deal.amount);
-    if (to === "paid") {
-      return deal.amount > 0
-        ? `✓ ${name}՝ վճարված։ ${amt} ավելացավ եկամուտին և գործարքների ցուցակին։`
-        : `✓ ${name}՝ վճարված։ Գումար նշված չէ, ուստի եկամուտ չավելացավ։`;
+  const findTx = (id) => state.data.transactions.find((t) => t.id === id) ||
+    state.data.pending.items.find((t) => t.id === id);
+  const firstCat = (type) => (cats().find((c) => c.type === type) || {}).id ?? null;
+  function addDate() {
+    if (add.day === "today") return state.data.today;
+    if (add.day === "yesterday") return isoAdd(state.data.today, -1);
+    return add.day;
+  }
+  const amountValue = () => Number(add.digits || 0);
+
+  function openAdd(tx = null) {
+    if (!state.data) return;
+    resetAdd();
+    if (tx) fillAdd(tx);
+    add.open = true;
+    add.mobile = MOBILE.matches;
+    if (add.mobile) {
+      window.scrollTo({ top: 0 });
+      $("#sheet").hidden = false;
+      document.body.classList.add("sheet-open");
+    } else {
+      $("#add-form").hidden = false;
+      $$("[data-add]").forEach((b) => b.setAttribute("aria-expanded", String(!tx)));
     }
-    if (from === "paid") return `${name}՝ հանվեց «Վճարված»-ից։ ${amt}-ն այլևս եկամուտ չի հաշվվում։`;
-    const wasPending = PENDING_STAGES.includes(from);
-    const isPending = PENDING_STAGES.includes(to);
-    if (isPending && !wasPending) return `${name}՝ «${STAGE_LABELS[to]}»։ ${amt} ավելացավ սպասվող գումարին։`;
-    if (!isPending && wasPending) return `${name}՝ «${STAGE_LABELS[to]}»։ ${amt} հանվեց սպասվող գումարից։`;
-    return `${name}՝ տեղափոխվեց «${STAGE_LABELS[to]}»։`;
-  }
-
-  async function moveDeal(deal, stage) {
-    if (!deal || deal.stage === stage) return;
-    const msg = moveMessage(deal, stage);
-    try {
-      await api(`/deals/${deal.id}`, { method: "PATCH", body: { stage } });
-      afterDealChange(deal.id, msg, stage === "paid" || deal.stage === "paid");
-      await reloadAll();
-    } catch (err) {
-      showError(err);
+    renderAdd();
+    if (!add.mobile) {
+      if (tx) $("#add-form").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("#add-title").focus({ preventScroll: !!tx });
     }
   }
 
-  /** Income is booked today: jump to the current month so the change is visible. */
-  function afterDealChange(id, msg, touchesIncome) {
-    state.flashDeal = id;
-    if (touchesIncome && state.month !== currentMonth) state.month = currentMonth;
-    toast(msg);
+  function closeAdd() {
+    add.open = false;
+    $("#add-form").hidden = true;
+    $("#sheet").hidden = true;
+    document.body.classList.remove("sheet-open");
+    $$("[data-add]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   }
 
-  function setupKanban() {
-    const board = $("#kanban");
-    let dragId = null;
-
-    board.addEventListener("click", (e) => {
-      const card = e.target.closest(".k-card");
-      if (!card) return;
-      const deal = state.deals.get(Number(card.dataset.id));
-      const next = e.target.closest(".k-next");
-      if (next) moveDeal(deal, next.dataset.next);
-      else openModal("deal-form", deal);
-    });
-    board.addEventListener("keydown", (e) => {
-      if (e.target.classList.contains("k-card") && (e.key === "Enter" || e.key === " ")) {
-        e.preventDefault();
-        openModal("deal-form", state.deals.get(Number(e.target.dataset.id)));
+  function renderAdd() {
+    const root = add.mobile ? $("#sheet") : $("#add-form");
+    $$("[data-add-type]", root).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.addType === add.type)));
+    $$("[data-day]", root).forEach((b) => {
+      const v = b.dataset.day;
+      const on = v === "other" ? !["today", "yesterday"].includes(add.day) : add.day === v;
+      b.setAttribute("aria-pressed", String(on));
+      if (v === "other") {
+        b.innerHTML = `${on ? dayLabel(add.day) : "Այլ օր"} ${svg("down")}`;
+        b.setAttribute("aria-expanded", String(add.calOpen));
       }
     });
-    board.addEventListener("dragstart", (e) => {
-      const card = e.target.closest(".k-card");
-      if (!card) return;
-      dragId = Number(card.dataset.id);
-      card.classList.add("is-dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", String(dragId));
+    $$("[data-status]", root).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.status === add.status)));
+    renderMiniCal($(".mini-cal", root));
+    const editing = !!add.edit;
+    $("[data-edit-delete]", root).hidden = !editing;
+
+    if (add.mobile) {
+      const sheet = $("#sheet");
+      sheet.classList.toggle("is-income", add.type === "income");
+      const q = $("#sheet-q");
+      const ask = editing ? (add.type === "income" ? "Խմբագրել եկամուտը" : "Խմբագրել ծախսը")
+        : (add.type === "income" ? "Որքա՞ն ստացար" : "Որքա՞ն ծախսեցիր");
+      q.textContent = add.error || ask;
+      q.classList.toggle("is-error", !!add.error);
+      const amt = $("#sheet-amount");
+      amt.textContent = fmt.amd(amountValue());
+      amt.classList.toggle("is-empty", !add.digits);
+      renderTiles();
+      const what = (add.status === "pending" ? "սպասվող " : "") + (add.type === "income" ? "եկամուտ" : "ծախս");
+      const btn = $("#sheet-submit");
+      btn.textContent = `${editing ? "Պահպանել" : `Ավելացնել ${what}`}${add.digits ? ` · ${fmt.amd(amountValue())}` : ""}`;
+      btn.setAttribute("aria-disabled", String(!add.digits));
+    } else {
+      renderAddChips();
+      const err = $("#add-error");
+      err.hidden = !add.error;
+      err.textContent = add.error;
+      $("#add-form").classList.toggle("is-income", add.type === "income");
+      $("#add-heading").hidden = !editing;
+      $("#add-submit").textContent = editing ? "Պահպանել փոփոխությունները" : "Պահպանել";
+    }
+  }
+
+  function renderAddChips() {
+    let html = cats().filter((c) => c.type === add.type).map((c) =>
+      `<button type="button" class="chip${add.cat === c.id ? " is-active " + add.type : ""}" data-add-cat="${c.id}"
+        aria-pressed="${add.cat === c.id}">${esc(c.name)}</button>`).join("");
+    html += add.newCat ? addNewCatForm() : '<button type="button" class="chip chip-add" data-add-new-cat>+ Նոր կատեգորիա</button>';
+    $("#add-cats").innerHTML = html;
+  }
+
+  function renderTiles() {
+    let html = cats().filter((c) => c.type === add.type).map((c) =>
+      `<button type="button" class="tile${add.cat === c.id ? " is-on" : ""}" data-add-cat="${c.id}"
+        aria-pressed="${add.cat === c.id}">${esc(c.name)}</button>`).join("");
+    html += add.newCat ? `<div class="tile-form">${addNewCatForm()}</div>`
+      : '<button type="button" class="tile tile-add" data-add-new-cat>+ Նոր</button>';
+    $("#sheet-cats").innerHTML = html;
+  }
+
+  function addNewCatForm() {
+    // A <div>, not a <form>: it sits inside #add-form and nested forms are dropped by the HTML parser.
+    return `<div class="nc-form" data-add-nc-form>
+      <input type="text" maxlength="80" placeholder="Նոր կատեգորիայի անուն" aria-label="Նոր կատեգորիայի անուն" value="${esc(add.newCat.name || "")}">
+      <button type="button" class="btn btn-sm btn-primary" data-add-nc-save>Ավելացնել</button>
+      <button type="button" class="icon-btn" data-add-nc-cancel aria-label="Փակել">${svg("x")}</button>
+      ${add.newCat.error ? `<span class="nc-error" role="alert">${esc(add.newCat.error)}</span>` : ""}</div>`;
+  }
+
+  function renderMiniCal(box) {
+    box.hidden = !add.calOpen;
+    if (!add.calOpen) return;
+    const ym = add.calMonth;
+    const [y, m] = ym.split("-").map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+    const picked = addDate();
+    let html = `<div class="mc-head"><button type="button" class="icon-btn" data-mc="-1" aria-label="Նախորդ ամիս">${svg("left")}</button>
+      <b>${monthTitle(ym)}</b><button type="button" class="icon-btn" data-mc="1" aria-label="Հաջորդ ամիս">${svg("right")}</button></div>
+      <div class="mc-grid">${WEEKDAYS.map((w) => `<span class="cal-wd" aria-hidden="true">${w}</span>`).join("")}${"<span></span>".repeat(offset)}`;
+    for (let d = 1; d <= days; d++) {
+      const iso = `${ym}-${String(d).padStart(2, "0")}`;
+      html += `<button type="button" class="mc-day${iso === picked ? " is-on" : ""}${iso === state.data.today ? " is-today" : ""}"
+        data-pick="${iso}" aria-label="${dayLabel(iso)}" aria-pressed="${iso === picked}">${d}</button>`;
+    }
+    box.innerHTML = html + "</div>";
+  }
+
+  async function saveAdd() {
+    if (!add.mobile) add.digits = $("#add-amount").value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 12);
+    if (!amountValue()) {
+      add.error = "Նախ գրիր գումարը";
+      renderAdd();
+      if (!add.mobile) $("#add-amount").focus();
+      return;
+    }
+    const title = (add.mobile ? $("#sheet-note").value : $("#add-title").value).trim();
+    const body = { type: add.type, amount: amountValue(), date: addDate(), title: title || null,
+      category_id: add.cat, status: add.status };
+    const editing = add.edit;
+    let tx;
+    try {
+      tx = editing
+        ? await api("PUT", `/api/finance/transactions/${editing.id}`, body)
+        : await api("POST", "/api/finance/transactions", body);
+    } catch (e) {
+      add.error = e.message;
+      renderAdd();
+      return;
+    }
+    closeAdd();
+    if (editing) {
+      // Keep the filters; drop the day filter only when the transaction moved to another month.
+      if (monthOf(tx.date) !== state.month) state.day = null;
+      toast("Գործարքը թարմացվեց");
+    } else {
+      Object.assign(state, { type: "all", cat: null, day: null, editCats: false, catMenu: false, newCat: null });
+      const what = add.status === "pending"
+        ? (add.type === "income" ? "Սպասվող եկամուտն" : "Սպասվող ծախսն")
+        : (add.type === "income" ? "Եկամուտն" : "Ծախսն");
+      toast(`${what} ավելացվեց · ${fmt.amd(body.amount)}`);
+    }
+    await load(monthOf(tx.date));
+  }
+
+  /** «Ջնջել» in the edit form: delete, then 6 s «Հետ բերել» (re-created with the same data). */
+  async function deleteEdited() {
+    const t = add.edit;
+    if (!t) return;
+    try {
+      await api("DELETE", `/api/finance/transactions/${t.id}`);
+    } catch (e) {
+      add.error = e.message;
+      renderAdd();
+      return;
+    }
+    closeAdd();
+    toast(`«${t.title}»-ը ջնջվեց`, false, {
+      label: "Հետ բերել",
+      run: async () => {
+        try {
+          await api("POST", "/api/finance/transactions", {
+            type: typeOf(t.amount), amount: Math.abs(t.amount), date: t.date,
+            title: t.title, category_id: t.category_id, status: t.status,
+          });
+        } catch (e) { toast(e.message, true); }
+        await load(state.month);
+      },
     });
-    board.addEventListener("dragend", (e) => {
-      e.target.closest(".k-card")?.classList.remove("is-dragging");
-      $$(".k-col.is-over", board).forEach((c) => c.classList.remove("is-over"));
-    });
-    board.addEventListener("dragover", (e) => {
-      const col = e.target.closest(".k-col");
-      if (!col || dragId === null) return;
-      e.preventDefault();
-      $$(".k-col.is-over", board).forEach((c) => c !== col && c.classList.remove("is-over"));
-      col.classList.add("is-over");
-    });
-    board.addEventListener("drop", async (e) => {
-      const col = e.target.closest(".k-col");
-      if (!col || dragId === null) return;
-      e.preventDefault();
-      col.classList.remove("is-over");
-      const deal = state.deals.get(dragId);
-      dragId = null;
-      await moveDeal(deal, col.dataset.stage);
-    });
+    await load(state.month);
   }
 
-  // ---------- Transactions ----------
-  function txRow(t) {
-    const statusCls = t.status === "pending" ? "pending" : t.type === "income" ? "paid" : "expense";
-    const sign = t.type === "income" ? "+" : "−";
-    return `
-      <tr data-id="${t.id}" tabindex="0" title="Սեղմեք՝ խմբագրելու համար">
-        <td class="muted-cell">${fmt.dayMonth(t.occurred_at)}</td>
-        <td class="desc">${fmt.escape(t.description || "—")}</td>
-        <td>${fmt.escape(t.category || "—")}</td>
-        <td><span class="status ${statusCls}">${fmt.escape(t.status_label)}</span></td>
-        <td class="num amount ${t.type}">${sign}${fmt.amd(t.amount)}</td>
-      </tr>`;
-  }
-
-  function renderTx(append, data) {
-    state.tx = append ? state.tx.concat(data.items) : data.items;
-    state.txTotal = data.total;
-    $("#tx-table tbody").innerHTML = state.tx.map(txRow).join("");
-    $("#tx-empty").hidden = state.tx.length > 0;
-    $("#tx-more").hidden = state.tx.length >= state.txTotal;
-    $("#tx-meta").textContent = state.txTotal ? `${state.tx.length} / ${state.txTotal}` : "";
-  }
-
-  function loadTx(append = false) {
-    const params = { month: state.month, limit: TX_PAGE, offset: append ? state.tx.length : 0 };
-    if (state.filter.type) params.type = state.filter.type;
-    if (state.filter.category) params.category_id = state.filter.category;
-    return api("/transactions", { params }).then((d) => renderTx(append, d));
-  }
-
-  function loadSources() {
-    const type = state.filter.type || "income";
-    return api("/sources", { params: { month: state.month, type } }).then(renderSources);
-  }
-
-  // ---------- Type tabs + category chips ----------
-  function renderFilters() {
-    const { type, category } = state.filter;
-    $$("#type-tabs .tab").forEach((t) => {
-      const on = t.dataset.type === type;
-      t.classList.toggle("is-active", on);
-      t.setAttribute("aria-selected", on);
-    });
-    const box = $("#cat-chips");
-    box.hidden = !type;
-    if (!type) return;
-    const cats = state.categories.filter((c) => c.type === type);
-    box.innerHTML =
-      `<button class="chip${category ? "" : " is-active"}" type="button" data-cat="">Բոլորը</button>` +
-      cats.map((c) => `
-        <span class="chip${c.id === category ? " is-active" : ""}" role="button" tabindex="0" data-cat="${c.id}">
-          ${fmt.escape(c.name)}
-          ${c.own ? `<button class="chip-x" type="button" data-del="${c.id}" title="Ջնջել կատեգորիան" aria-label="Ջնջել ${fmt.escape(c.name)}">×</button>` : ""}
-        </span>`).join("") +
-      `<button class="chip chip-add" type="button" data-add>+ Նոր կատեգորիա</button>`;
-  }
-
-  function setFilter(type, category = null) {
-    state.filter = { type, category };
-    renderFilters();
-    return Promise.all([loadTx(), loadSources()]).catch(showError);
-  }
-
-  async function reloadCategories() {
-    state.categories = await api("/categories");
-  }
-
+  // ---------- categories ----------
   async function createCategory(name, type) {
-    const cat = await api("/categories", { method: "POST", body: { name, type } });
-    await reloadCategories();
+    name = name.trim();
+    if (!name) throw new Error("Գրիր անունը");
+    const cat = await api("POST", "/api/finance/categories", { name, type });
+    await load(state.month);
     return cat;
   }
 
-  function showAddCategory(btn) {
-    const form = document.createElement("form");
-    form.className = "chip-form";
-    form.innerHTML = `<input name="name" maxlength="80" placeholder="Կատեգորիայի անուն" aria-label="Կատեգորիայի անուն" required>
-      <button class="chip is-active" type="submit">Ավելացնել</button>`;
-    btn.replaceWith(form);
-    const input = form.name;
-    input.focus();
-    input.addEventListener("keydown", (e) => { if (e.key === "Escape") renderFilters(); });
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const name = input.value.trim();
-      if (!name) return;
-      try {
-        const cat = await createCategory(name, state.filter.type);
-        toast(`Կատեգորիան ավելացավ՝ «${cat.name}»։`);
-        await setFilter(state.filter.type, cat.id);
-      } catch (err) {
-        showError(err);
-      }
-    });
-  }
-
-  function setupFilters() {
-    $$("#type-tabs .tab").forEach((t) => t.addEventListener("click", () => setFilter(t.dataset.type)));
-    const box = $("#cat-chips");
-    box.addEventListener("click", async (e) => {
-      const del = e.target.closest("[data-del]");
-      if (del) {
-        const cat = state.categories.find((c) => c.id === Number(del.dataset.del));
-        if (!cat || !confirm(`Ջնջե՞լ «${cat.name}» կատեգորիան։ Գործարքները կմնան՝ առանց կատեգորիայի։`)) return;
-        try {
-          await api(`/categories/${cat.id}`, { method: "DELETE" });
-          await reloadCategories();
-          await setFilter(state.filter.type, state.filter.category === cat.id ? null : state.filter.category);
-        } catch (err) {
-          showError(err);
-        }
-        return;
-      }
-      if (e.target.closest("[data-add]")) return showAddCategory(e.target.closest("[data-add]"));
-      const chip = e.target.closest("[data-cat]");
-      if (chip) setFilter(state.filter.type, chip.dataset.cat ? Number(chip.dataset.cat) : null);
-    });
-    box.addEventListener("keydown", (e) => {
-      const chip = e.target.closest("span[data-cat]");
-      if (chip && e.target === chip && (e.key === "Enter" || e.key === " ")) {
-        e.preventDefault();
-        chip.click();
-      }
-    });
-    $("#sources").addEventListener("click", (e) => {
-      const li = e.target.closest("li[data-cat]");
-      if (!li) return;
-      setFilter(li.dataset.type, Number(li.dataset.cat));
-      $("#tx-table").scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
-
-  function setupTxTable() {
-    const tbody = $("#tx-table tbody");
-    const open = (row) => {
-      const tx = state.tx.find((t) => t.id === Number(row.dataset.id));
-      if (tx) openModal("tx-form", tx);
-    };
-    tbody.addEventListener("click", (e) => {
-      const row = e.target.closest("tr[data-id]");
-      if (row) open(row);
-    });
-    tbody.addEventListener("keydown", (e) => {
-      const row = e.target.closest("tr[data-id]");
-      if (row && (e.key === "Enter" || e.key === " ")) {
-        e.preventDefault();
-        open(row);
-      }
-    });
-    $("#tx-more").addEventListener("click", () => loadTx(true).catch(showError));
-  }
-
-  // ---------- Modal ----------
-  const modal = $("#modal");
-
-  function fillCategories(type, selected) {
-    const select = $("#tx-form select[name=category_id]");
-    const opts = state.categories.filter((c) => c.type === type);
-    select.innerHTML = `<option value="">— Առանց կատեգորիայի —</option>` +
-      opts.map((c) => `<option value="${c.id}"${c.id === selected ? " selected" : ""}>${fmt.escape(c.name)}</option>`).join("") +
-      `<option value="__new">+ Նոր կատեգորիա…</option>`;
-    select.dataset.prev = selected ? String(selected) : "";
-  }
-
-  async function onCategorySelect(e) {
-    const select = e.target;
-    if (select.value !== "__new") {
-      select.dataset.prev = select.value;
-      return;
-    }
-    const form = $("#tx-form");
-    const type = $("input[name=type]:checked", form).value;
-    const name = (prompt(type === "income" ? "Եկամտի նոր կատեգորիա" : "Ծախսի նոր կատեգորիա") || "").trim();
-    if (!name) {
-      select.value = select.dataset.prev || "";
-      return;
-    }
+  async function deleteCategory(id) {
     try {
-      const cat = await createCategory(name, type);
-      fillCategories(type, cat.id);
-      renderFilters();
-    } catch (err) {
-      select.value = select.dataset.prev || "";
-      formError(form, err.message);
-    }
+      await api("DELETE", `/api/finance/categories/${id}`);
+    } catch (e) { toast(e.message, true); return; }
+    if (state.cat === id) state.cat = null;
+    await load(state.month);
   }
 
-  function switchForm(formId) {
-    $$("#modal-tabs .tab").forEach((t) => {
-      const on = t.dataset.form === formId;
-      t.classList.toggle("is-active", on);
-      t.setAttribute("aria-selected", on);
-    });
-    $("#tx-form").hidden = formId !== "tx-form";
-    $("#deal-form").hidden = formId !== "deal-form";
-  }
-
-  function openModal(formId, item = null) {
-    state.editing = item ? { form: formId, id: item.id } : null;
-    $("#modal-title").textContent = item
-      ? (formId === "tx-form" ? "Խմբագրել գործարքը" : "Խմբագրել համագործակցությունը")
-      : "Ավելացնել";
-    $("#modal-tabs").hidden = Boolean(item);
-    switchForm(formId);
-
-    const form = $("#" + formId);
-    form.reset();
-    $(".form-error", form).hidden = true;
-    $("[data-delete]", form).hidden = !item;
-
-    if (formId === "tx-form") {
-      const type = item ? item.type : state.filter.type || "income";
-      $(`input[name=type][value=${type}]`, form).checked = true;
-      fillCategories(type, item ? item.category_id : state.filter.category);
-      form.amount.value = item ? item.amount : "";
-      form.occurred_at.value = item ? item.occurred_at : isoToday();
-      form.description.value = item ? item.description || "" : "";
-      form.status.value = item ? item.status : "paid";
-    } else {
-      form.brand_name.value = item ? item.brand_name : "";
-      form.deliverables.value = item ? item.deliverables || "" : "";
-      form.amount.value = item ? item.amount : "";
-      form.due_date.value = item ? item.due_date || "" : "";
-      form.stage.value = item ? item.stage : "negotiation";
-    }
-
-    if (typeof modal.showModal === "function") modal.showModal();
-    else modal.setAttribute("open", "");
-    (formId === "tx-form" ? form.amount : form.brand_name).focus();
-  }
-
-  function closeModal() {
-    if (typeof modal.close === "function") modal.close();
-    else modal.removeAttribute("open");
-    state.editing = null;
-  }
-
-  function formError(form, msg) {
-    const el = $(".form-error", form);
-    el.textContent = msg;
+  // ---------- toast ----------
+  let toastTimer;
+  let toastAction = null; // {label, run}
+  function toast(text, isError = false, action = null) {
+    const el = $("#toast");
+    el.innerHTML = (isError ? "" : svg("check")) + `<span>${esc(text)}</span>` +
+      (action ? `<button type="button" data-toast-action>${esc(action.label)}</button>` : "");
+    el.classList.toggle("is-error", isError);
     el.hidden = false;
+    toastAction = action;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; toastAction = null; },
+      action ? UNDO_MS : isError ? 4000 : TOAST_MS);
   }
 
-  function readTxForm(form) {
-    const amount = Number(form.amount.value);
-    if (!(amount > 0)) throw new Error("Գրեք գումարը (0-ից մեծ)։");
-    if (!form.occurred_at.value) throw new Error("Ընտրեք ամսաթիվը։");
-    return {
-      type: $("input[name=type]:checked", form).value,
-      amount: form.amount.value,
-      occurred_at: form.occurred_at.value,
-      description: form.description.value.trim() || null,
-      category_id: form.category_id.value ? Number(form.category_id.value) : null,
-      status: form.status.value,
-    };
+  // ---------- events ----------
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest("button");
+    if (!t || !state.data) {
+      if (state.catMenu && !e.target.closest(".cat-menu-wrap")) { state.catMenu = false; state.newCat = null; renderFilters(); }
+      if (!e.target.closest(".month-pop-wrap")) closeMonthPop();
+      return;
+    }
+    const d = t.dataset;
+
+    if (state.catMenu && !t.closest(".cat-menu-wrap")) { state.catMenu = false; if (state.newCat?.where === "menu") state.newCat = null; renderFilters(); }
+    if (!t.closest(".month-pop-wrap")) closeMonthPop();
+
+    // header
+    if (d.month) { state.day = null; await load(shiftMonth(state.month, Number(d.month))); return; }
+    if (t.id === "month-pop-btn") { const pop = $("#month-pop"); pop.hidden = !pop.hidden; t.setAttribute("aria-expanded", String(!pop.hidden)); return; }
+    if ("add" in d) { if (add.open && !add.mobile && !add.edit) closeAdd(); else openAdd(); return; }
+    if ("toastAction" in d) {
+      const action = toastAction;
+      toastAction = null; clearTimeout(toastTimer); $("#toast").hidden = true;
+      if (action) await action.run();
+      return;
+    }
+    if (d.edit) { const tx = findTx(Number(d.edit)); if (tx) openAdd(tx); return; }
+
+    // calendar
+    if (t.id === "cal-help-btn") { state.help = !state.help; renderCalendar(); return; }
+    if (d.date) { state.day = state.day === d.date ? null : d.date; renderCalendar(); renderList(); renderFilters(); return; }
+    if ("clearDay" in d) { state.day = null; renderCalendar(); renderList(); renderFilters(); return; }
+
+    // filters
+    if (d.type && t.closest("[data-type-seg]")) {
+      state.type = d.type;
+      if (state.cat !== null && state.type !== "all" && (catById(state.cat) || {}).type !== state.type) state.cat = null;
+      if (state.newCat) state.newCat.type = state.type === "all" ? state.newCat.type : state.type;
+      renderFilters(); renderList(); return;
+    }
+    if ("cat" in d && !t.closest(".add-form, .sheet")) {
+      state.cat = d.cat === "" ? null : Number(d.cat);
+      if (t.closest("#cat-menu")) state.catMenu = false;
+      renderFilters(); renderList(); return;
+    }
+    if (t.id === "cat-edit" || "editToggle" in d) { state.editCats = !state.editCats; renderFilters(); return; }
+    if (t.id === "cat-menu-btn") { state.catMenu = !state.catMenu; if (!state.catMenu) state.newCat = null; renderFilters(); return; }
+    if (d.delCat) { await deleteCategory(Number(d.delCat)); return; }
+    if (d.newCat) {
+      state.newCat = { where: d.newCat, type: state.type === "all" ? "expense" : state.type, name: "", error: "" };
+      renderFilters(); $(`[data-nc-form="${d.newCat}"] input`)?.focus(); return;
+    }
+    if (d.ncType) { state.newCat.type = d.ncType; state.newCat.name = $(`[data-nc-form] input`)?.value || ""; renderFilters(); return; }
+    if ("ncCancel" in d) { state.newCat = null; renderFilters(); return; }
+
+    // pending
+    if (t.id === "pend-toggle") { state.pendingOpen = !state.pendingOpen; renderPending(); return; }
+    if (d.confirm) { t.disabled = true; await confirmPending(Number(d.confirm)); return; }
+    if (d.cancel) { t.disabled = true; await cancelPending(Number(d.cancel)); return; }
+    if ("undo" in d) { await undoCancel(); return; }
+
+    // charts
+    if (d.share) { state.share = d.share; renderCharts(); return; }
+
+    // add form / sheet
+    if (!add.open) return;
+    if (d.addType) {
+      if (add.type !== d.addType) { add.type = d.addType; add.cat = firstCat(add.type); add.newCat = null; }
+      add.error = ""; renderAdd(); return;
+    }
+    if (d.addCat) { add.cat = Number(d.addCat); renderAdd(); return; }
+    if ("addNewCat" in d) { add.newCat = { name: "", error: "" }; renderAdd(); $("[data-add-nc-form] input", add.mobile ? $("#sheet") : $("#add-form"))?.focus(); return; }
+    if ("addNcCancel" in d) { add.newCat = null; renderAdd(); return; }
+    if ("addNcSave" in d) { await saveAddCategory(); return; }
+    if (d.day) {
+      if (d.day === "other") { add.calOpen = !add.calOpen; add.calMonth = monthOf(addDate()); }
+      else { add.day = d.day; add.calOpen = false; }
+      renderAdd(); return;
+    }
+    if (d.mc) { add.calMonth = shiftMonth(add.calMonth, Number(d.mc)); renderAdd(); return; }
+    if (d.pick) { add.day = d.pick; add.calOpen = false; renderAdd(); return; }
+    if (d.status) { add.status = d.status; renderAdd(); return; }
+    if (d.key) {
+      if (d.key === "back") add.digits = add.digits.slice(0, -1);
+      else if (add.digits || (d.key !== "0" && d.key !== "000")) add.digits = (add.digits + d.key).slice(0, Math.max(9, add.digits.length)); // never cut an edited amount
+      add.error = ""; renderAdd(); return;
+    }
+    if ("addCancel" in d || "sheetClose" in d) { closeAdd(); return; }
+    if ("editDelete" in d) { t.disabled = true; await deleteEdited(); t.disabled = false; return; }
+    if (t.id === "sheet-submit") { await saveAdd(); return; }
+  });
+
+  function closeMonthPop() {
+    const pop = $("#month-pop");
+    if (pop && !pop.hidden) { pop.hidden = true; $("#month-pop-btn").setAttribute("aria-expanded", "false"); }
   }
 
-  function readDealForm(form) {
-    const brand = form.brand_name.value.trim();
-    if (!brand) throw new Error("Գրեք բրենդի անունը։");
-    const amount = form.amount.value === "" ? "0" : form.amount.value;
-    if (Number(amount) < 0) throw new Error("Գումարը չի կարող բացասական լինել։");
-    return {
-      brand_name: brand,
-      deliverables: form.deliverables.value.trim() || null,
-      amount,
-      due_date: form.due_date.value || null,
-      stage: form.stage.value,
-    };
-  }
-
-  function setupModal() {
-    $("#add-btn").addEventListener("click", () => openModal("tx-form"));
-    $$("#modal-tabs .tab").forEach((t) => t.addEventListener("click", () => openModal(t.dataset.form)));
-    $$("[data-close]", modal).forEach((b) => b.addEventListener("click", closeModal));
-    modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
-    $$("#tx-form input[name=type]").forEach((r) => r.addEventListener("change", () => fillCategories(r.value, null)));
-    $("#tx-form select[name=category_id]").addEventListener("change", onCategorySelect);
-
-    const submit = (formId, read, path) => async (e) => {
-      e.preventDefault();
-      const form = e.currentTarget;
-      const btn = $("button[type=submit]", form);
+  document.addEventListener("submit", async (e) => {
+    const form = e.target;
+    e.preventDefault();
+    if (form.id === "add-form") { await saveAdd(); return; }
+    if (form.dataset.ncForm) {
+      const name = $("input", form).value;
+      const nc = state.newCat;
       try {
-        const body = read(form);
-        btn.disabled = true;
-        const editing = state.editing;
-        const before = editing && formId === "deal-form" ? state.deals.get(editing.id) : null;
-        const saved = editing
-          ? await api(`${path}/${editing.id}`, { method: "PATCH", body })
-          : await api(path, { method: "POST", body });
-        closeModal();
-        if (formId === "deal-form") {
-          const fromStage = before ? before.stage : null;
-          const deal = { ...saved, stage: fromStage };
-          const moved = fromStage !== saved.stage;
-          let msg = moved ? moveMessage(deal, saved.stage) : `${saved.brand_name}՝ պահպանված է։`;
-          if (!before && saved.stage !== "paid") msg = `${saved.brand_name}՝ ավելացավ «${STAGE_LABELS[saved.stage]}» սյունակում։`;
-          if (moved || !before) afterDealChange(saved.id, msg, saved.stage === "paid" || fromStage === "paid");
-          else toast(msg);
-        }
-        await reloadAll();
+        const cat = await createCategory(name, nc.type);
+        state.newCat = null;
+        state.cat = cat.id;
+        if (state.type !== "all" && state.type !== cat.type) state.type = cat.type;
+        state.catMenu = false;
+        renderFilters(); renderList();
       } catch (err) {
-        formError(form, err.message);
-      } finally {
-        btn.disabled = false;
+        nc.name = name; nc.error = err.message; renderFilters();
+        $(`[data-nc-form="${nc.where}"] input`)?.focus();
       }
-    };
-    $("#tx-form").addEventListener("submit", submit("tx-form", readTxForm, "/transactions"));
-    $("#deal-form").addEventListener("submit", submit("deal-form", readDealForm, "/deals"));
+      return;
+    }
+  });
 
-    $$("[data-delete]", modal).forEach((btn) => btn.addEventListener("click", async () => {
-      const editing = state.editing;
-      if (!editing) return;
-      const isTx = editing.form === "tx-form";
-      if (!confirm(isTx ? "Ջնջե՞լ այս գործարքը։" : "Ջնջե՞լ այս համագործակցությունը։ Կապված գործարքները կմնան։")) return;
-      try {
-        await api(`${isTx ? "/transactions" : "/deals"}/${editing.id}`, { method: "DELETE" });
-        closeModal();
-        await reloadAll();
-      } catch (err) {
-        formError($("#" + editing.form), err.message);
-      }
-    }));
-  }
-
-  // ---------- Loading ----------
-  function loadMonth() {
-    const params = { month: state.month };
-    return Promise.all([
-      api("/summary", { params }).then(renderSummary),
-      api("/monthly", { params: { ...params, months: 6 } }).then(renderMonthly),
-      loadSources(),
-      loadTx(),
-    ]);
-  }
-
-  async function reloadAll() {
-    $("#page-error").hidden = true;
-    await Promise.all([loadMonth(), api("/deals").then(renderDeals)]);
-    state.flashDeal = null;
-  }
-
-  async function init() {
-    $("#month-prev").addEventListener("click", () => {
-      state.month = shiftMonth(state.month, -1);
-      loadMonth().catch(showError);
-    });
-    $("#month-next").addEventListener("click", () => {
-      if (state.month >= currentMonth) return;
-      state.month = shiftMonth(state.month, 1);
-      loadMonth().catch(showError);
-    });
-    setupKanban();
-    setupTxTable();
-    setupFilters();
-    setupModal();
-
+  async function saveAddCategory() {
+    const root = add.mobile ? $("#sheet") : $("#add-form");
+    const name = $("[data-add-nc-form] input", root).value;
     try {
-      await reloadCategories();
-      renderFilters();
-      await reloadAll();
+      const cat = await createCategory(name, add.type);
+      add.newCat = null;
+      add.cat = cat.id;
+      renderAdd();
     } catch (err) {
-      showError(err);
+      add.newCat = { name, error: err.message }; renderAdd();
+      $("[data-add-nc-form] input", root)?.focus();
     }
   }
 
-  init();
+  // Desktop amount: digits only, shown with thousands separators.
+  $("#add-amount").addEventListener("input", (e) => {
+    const digits = e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 12);
+    e.target.value = digits ? Number(digits).toLocaleString("en-US") : "";
+    if (add.error) { add.error = ""; renderAdd(); }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.closest("[data-add-nc-form]")) { e.preventDefault(); saveAddCategory(); return; }
+    if (e.key !== "Escape") return;
+    if (add.open && add.mobile) closeAdd();
+    else if (state.catMenu) { state.catMenu = false; state.newCat = null; renderFilters(); $("#cat-menu-btn").focus(); }
+    else if (state.newCat) { state.newCat = null; renderFilters(); }
+    else closeMonthPop();
+  });
+
+  // Switching between phone and desktop width while the add form is open.
+  MOBILE.addEventListener("change", () => { if (add.open) closeAdd(); });
+
+  load(state.month);
 })();

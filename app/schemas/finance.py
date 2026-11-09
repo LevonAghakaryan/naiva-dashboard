@@ -1,173 +1,107 @@
-"""Request/response shapes for /api/finance/* (the "Ֆինանսներ" page).
+"""Request/response shapes for /api/finance/* (the "Ֆինանսներ" page, docs: finance-spec.md).
 
-Money goes out as plain numbers (AMD); the frontend formats it (֏1.24M, ֏1,240,000).
-Money comes in as Decimal so nothing is lost before it is stored in DECIMAL(14,2).
+Money goes out as signed integers in AMD: income > 0, expense < 0. The frontend formats it.
+Status in the API is "done" | "pending" (stored in the DB as 'paid' | 'pending').
 """
 from datetime import date
-from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
 TxType = Literal["income", "expense"]
-TxStatus = Literal["paid", "pending"]
-DealStage = Literal["negotiation", "contract", "in_progress", "paid", "lost"]
-Direction = Literal["up", "down", "flat"]
+TxStatus = Literal["done", "pending"]
 
 MonthStr = Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
-Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=2)]
-ShortText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)]
-BrandName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
-CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+Title = Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)]
+CategoryName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)]
 
 
-# ---------- GET /api/finance/summary ----------
+# ---------- pieces of GET /api/finance/page ----------
 
-class MoneyKpi(BaseModel):
-    key: str = Field(examples=["income"])
-    label: str = Field(examples=["Եկամուտ"])
-    value: float
-    previous: float  # previous calendar month
-    change_pct: float | None
-    direction: Direction
-    good: bool  # pill color: expenses going up is bad
-
-
-class PendingKpi(BaseModel):
-    label: str = "Սպասվող վճարումներ"
-    value: float
-    count: int  # deals in contract/in_progress + pending income transactions
-    nearest_due: date | None  # "ամենամոտը՝ Նոյ 12"
+class SummaryOut(BaseModel):
+    income: int  # done income of the month
+    expense: int  # done expense of the month (absolute value)
+    net: int  # income − expense, may be negative
+    net_pct: int | None  # net / income × 100 ("+68% եկամտից"); None without income
+    spent_pct: int  # round(expense / income × 100), max 100; 0 without income
+    income_count: int
+    expense_count: int
+    prev_income: int
+    prev_expense: int
+    forecast: int | None  # net + all pending amounts; None when nothing is pending
 
 
-class FinanceSummaryOut(BaseModel):
-    month: str = Field(examples=["2026-11"])
-    month_label: str = Field(examples=["Նոյեմբեր 2026"])
-    income: MoneyKpi
-    expense: MoneyKpi
-    net: MoneyKpi
-    margin_pct: float | None  # net / income × 100
-    pending: PendingKpi
-
-
-# ---------- GET /api/finance/monthly ----------
-
-class MonthTotals(BaseModel):
-    month: str
-    label: str = Field(examples=["Նոյ"])
-    income: float
-    expense: float
-
-
-class MonthlyOut(BaseModel):
-    items: list[MonthTotals]  # oldest → newest, the selected month is last
-
-
-# ---------- GET /api/finance/sources?type=income|expense ----------
-
-class SourceItem(BaseModel):
+class TransactionOut(BaseModel):
+    id: int
+    date: date
+    title: str
     category_id: int | None
-    label: str
-    amount: float
-    percent: float
+    category: str
+    amount: int  # signed
+    status: TxStatus
 
 
-class SourcesOut(BaseModel):
-    month: str
-    type: TxType
-    total: float
-    items: list[SourceItem]  # biggest first
+class PendingOut(BaseModel):
+    income: int  # sum of pending income (> 0)
+    expense: int  # sum of pending expense (< 0)
+    items: list[TransactionOut]  # by date
 
 
-# ---------- categories ----------
+class CalendarDay(BaseModel):
+    date: date
+    income: int
+    expense: int  # absolute value
+    net: int
+    count: int  # done transactions that day
+    pending: int  # pending transactions that day
+
 
 class CategoryOut(BaseModel):
     id: int
     name: str
     type: TxType
-    own: bool  # created by the user → can be deleted; default ones can't
+    is_system: bool  # "Այլ եկամուտ" / "Այլ ծախս" can't be deleted
+    count: int  # done transactions in the selected month
+
+
+class MonthTotals(BaseModel):
+    month: str
+    label: str = Field(examples=["Նոյ"])
+    income: int
+    expense: int
+
+
+class CategoryShare(BaseModel):
+    category_id: int | None
+    name: str
+    amount: int  # absolute value
+    percent: int
+
+
+class FinancePageOut(BaseModel):
+    month: str = Field(examples=["2026-11"])
+    month_label: str = Field(examples=["Նոյեմբեր 2026"])
+    today: date
+    summary: SummaryOut
+    transactions: list[TransactionOut]  # done, newest first
+    pending: PendingOut
+    calendar: list[CalendarDay]  # every day of the month
+    categories: list[CategoryOut]  # income first, "Այլ" last within each type
+    monthly: list[MonthTotals]  # last 6 months, oldest → newest
+    by_category: dict[TxType, list[CategoryShare]]  # biggest first
+
+
+# ---------- writes ----------
+
+class TransactionIn(BaseModel):
+    type: TxType  # decides the sign
+    amount: Annotated[int, Field(gt=0, lt=10**12)]
+    date: date
+    title: Title | None = None  # empty → category name
+    category_id: int | None = None  # empty → "Այլ եկամուտ" / "Այլ ծախս"
+    status: TxStatus = "done"
 
 
 class CategoryIn(BaseModel):
     name: CategoryName
     type: TxType
-
-
-# ---------- deals (kanban) ----------
-
-class DealOut(BaseModel):
-    id: int
-    brand_name: str
-    deliverables: str | None
-    amount: float
-    stage: DealStage
-    due_date: date | None
-
-
-class DealColumn(BaseModel):
-    stage: DealStage
-    label: str = Field(examples=["Բանակցություն"])
-    count: int
-    total: float
-    items: list[DealOut]
-
-
-class DealsBoardOut(BaseModel):
-    active_count: int  # everything not paid / lost
-    active_total: float
-    columns: list[DealColumn]  # negotiation → contract → in_progress → paid
-    lost: list[DealOut]
-
-
-class DealIn(BaseModel):
-    brand_name: BrandName
-    deliverables: ShortText | None = None
-    amount: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)] = Decimal("0")
-    stage: DealStage = "negotiation"
-    due_date: date | None = None
-
-
-class DealPatch(BaseModel):
-    brand_name: BrandName | None = None
-    deliverables: ShortText | None = None
-    amount: Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)] | None = None
-    stage: DealStage | None = None
-    due_date: date | None = None
-
-
-# ---------- transactions ----------
-
-class TransactionOut(BaseModel):
-    id: int
-    occurred_at: date
-    description: str | None
-    type: TxType
-    category_id: int | None
-    category: str | None
-    status: TxStatus
-    status_label: str = Field(examples=["Վճարված", "Ծախս", "Սպասվող"])
-    amount: float
-    deal_id: int | None
-
-
-class TransactionsOut(BaseModel):
-    total: int
-    items: list[TransactionOut]  # newest first
-
-
-class TransactionIn(BaseModel):
-    type: TxType
-    amount: Amount
-    occurred_at: date
-    description: ShortText | None = None
-    category_id: int | None = None
-    status: TxStatus = "paid"
-
-
-class TransactionPatch(BaseModel):
-    type: TxType | None = None
-    amount: Amount | None = None
-    occurred_at: date | None = None
-    description: ShortText | None = None
-    category_id: int | None = None
-    status: TxStatus | None = None

@@ -6,7 +6,7 @@ Usage (from the project folder, after db/schema.sql has been run in MySQL):
 
 Last-30-day totals are calibrated to the design (PROJECT.md §3):
 Views 1.2M ▲14%, Reach 312K ▲12.4%, Profile views 18.4K ▲6%, Saves 9.6K ▼3%, followers 48,230 (+1,490).
-Finance (deals + transactions) is calibrated too — see scripts/seed_finance.py.
+Finance (categories + transactions) is calibrated too — see scripts/seed_finance.py.
 If the demo user already exists but has no finance data, only the finance part is added.
 Only the demo user/account is touched; nothing else in the DB is changed.
 """
@@ -245,11 +245,21 @@ def seed(db: Session, today: date | None = None, rng_seed: int = 42) -> IgAccoun
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed demo analytics data for @ani.travels")
     parser.add_argument("--reset", action="store_true", help="delete existing demo data first")
+    parser.add_argument("--finance", action="store_true", help="re-create only the demo user's finance data")
     args = parser.parse_args()
 
     try:
         with SessionLocal() as db:
             existing = db.scalar(select(User).where(User.email == DEMO_EMAIL))
+            if args.finance:
+                if existing is None:
+                    print("Դեմո օգտատեր չկա։ Նախ՝ scripts/seed.py")
+                    return 1
+                delete_finance(db, existing.id)
+                seed_finance(db, existing)
+                db.commit()
+                print("Ֆինանսների դեմո տվյալները նորից ստեղծված են։")
+                return 0
             if existing is not None:
                 if not args.reset:
                     if not has_finance(db, existing.id):
