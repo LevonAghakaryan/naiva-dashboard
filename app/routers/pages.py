@@ -10,6 +10,18 @@ router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
+def asset(path: str) -> str:
+    """/static/<path>?v=<mtime>: a changed file gets a new URL, so browsers never use a stale copy."""
+    try:
+        version = int((BASE_DIR / "static" / path).stat().st_mtime)
+    except OSError:
+        version = 0
+    return f"/static/{path}?v={version}"
+
+
+templates.env.globals["asset"] = asset
+
+
 def _page_context(account: IgAccount | None, active: str) -> dict:
     return {
         "app_name": settings.app_name,

@@ -37,12 +37,43 @@ class AccountDailyStats(Base):
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     ig_account_id: Mapped[int] = mapped_column(BigIntFK, ForeignKey("ig_accounts.id", ondelete="CASCADE"))
     day: Mapped[date] = mapped_column(Date)
-    followers: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
-    reach: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    followers: Mapped[int] = mapped_column(UInt, default=0, server_default="0")  # level (end of day)
+    # Flows for that day:
+    new_follows: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    unfollows: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    reach: Mapped[int] = mapped_column(UInt, default=0, server_default="0")  # unique accounts that day
+    non_follower_reach: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
     views: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    accounts_engaged: Mapped[int] = mapped_column(UInt, default=0, server_default="0")  # unique that day
+    interactions: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    likes: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    comments: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    saves: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    shares: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    reposts: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
     profile_views: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    link_taps: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
 
     ig_account: Mapped[IgAccount] = relationship(back_populates="daily_stats")
+
+
+class AccountPeriodStats(Base):
+    """Unique-account metrics for a whole period (reach, accounts engaged can't be summed by day).
+
+    One row per (account, last day of the period, period length in days), taken from the API
+    for exactly that period. When a row is missing the service falls back to the daily sum.
+    """
+
+    __tablename__ = "account_period_stats"
+    __table_args__ = (UniqueConstraint("ig_account_id", "end_day", "days", name="uq_account_period"),)
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    ig_account_id: Mapped[int] = mapped_column(BigIntFK, ForeignKey("ig_accounts.id", ondelete="CASCADE"))
+    end_day: Mapped[date] = mapped_column(Date)
+    days: Mapped[int] = mapped_column(TinyUInt)
+    reach: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    non_follower_reach: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    accounts_engaged: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
 
 
 class Post(Base):
@@ -66,10 +97,6 @@ class Post(Base):
         order_by="PostStats.captured_at",
     )
 
-    @property
-    def latest_stats(self) -> PostStats | None:
-        return self.stats[-1] if self.stats else None
-
 
 class PostStats(Base):
     """Snapshots of a post's metrics over time (stories must be captured within 24h)."""
@@ -86,6 +113,8 @@ class PostStats(Base):
     comments: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
     saves: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
     shares: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    reposts: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
+    follows: Mapped[int] = mapped_column(UInt, default=0, server_default="0")
 
     post: Mapped[Post] = relationship(back_populates="stats")
 

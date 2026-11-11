@@ -1,5 +1,7 @@
--- Creatorly — MySQL 8 schema (v1.1)
+-- Creatorly — MySQL 8 schema (v1.2)
 -- v1.1: + audience_online_hours, + ai_usage, + ai_messages.blocks
+-- v1.2: account_daily_stats + follows/unfollows/engagement columns, + account_period_stats,
+--       post_stats + reposts/follows (db/migrations/2026-11-11_instagram_v2.sql)
 -- utf8mb4 for Armenian text and emoji in DMs/captions
 
 SET NAMES utf8mb4;
@@ -42,12 +44,37 @@ CREATE TABLE account_daily_stats (
   id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ig_account_id BIGINT UNSIGNED NOT NULL,
   day           DATE NOT NULL,
-  followers     INT UNSIGNED NOT NULL DEFAULT 0,
-  reach         INT UNSIGNED NOT NULL DEFAULT 0,
+  followers     INT UNSIGNED NOT NULL DEFAULT 0,   -- level, end of day
+  new_follows   INT UNSIGNED NOT NULL DEFAULT 0,   -- flows for the day ↓
+  unfollows     INT UNSIGNED NOT NULL DEFAULT 0,
+  reach         INT UNSIGNED NOT NULL DEFAULT 0,   -- unique accounts that day
+  non_follower_reach INT UNSIGNED NOT NULL DEFAULT 0,
   views         INT UNSIGNED NOT NULL DEFAULT 0,
+  accounts_engaged INT UNSIGNED NOT NULL DEFAULT 0, -- unique accounts that day
+  interactions  INT UNSIGNED NOT NULL DEFAULT 0,
+  likes         INT UNSIGNED NOT NULL DEFAULT 0,
+  comments      INT UNSIGNED NOT NULL DEFAULT 0,
+  saves         INT UNSIGNED NOT NULL DEFAULT 0,
+  shares        INT UNSIGNED NOT NULL DEFAULT 0,
+  reposts       INT UNSIGNED NOT NULL DEFAULT 0,
   profile_views INT UNSIGNED NOT NULL DEFAULT 0,
+  link_taps     INT UNSIGNED NOT NULL DEFAULT 0,
   FOREIGN KEY (ig_account_id) REFERENCES ig_accounts(id) ON DELETE CASCADE,
   UNIQUE KEY uq_account_day (ig_account_id, day)
+) ENGINE=InnoDB;
+
+-- Reach / accounts engaged are unique accounts: a period total can't be summed from days,
+-- so it is stored per period exactly as the API returns it (fallback: daily sum).
+CREATE TABLE account_period_stats (
+  id                 BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ig_account_id      BIGINT UNSIGNED NOT NULL,
+  end_day            DATE NOT NULL,              -- last day of the period
+  days               TINYINT UNSIGNED NOT NULL,  -- 7 / 30 / 90
+  reach              INT UNSIGNED NOT NULL DEFAULT 0,
+  non_follower_reach INT UNSIGNED NOT NULL DEFAULT 0,
+  accounts_engaged   INT UNSIGNED NOT NULL DEFAULT 0,
+  FOREIGN KEY (ig_account_id) REFERENCES ig_accounts(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_account_period (ig_account_id, end_day, days)
 ) ENGINE=InnoDB;
 
 CREATE TABLE posts (
@@ -74,6 +101,8 @@ CREATE TABLE post_stats (
   comments    INT UNSIGNED NOT NULL DEFAULT 0,
   saves       INT UNSIGNED NOT NULL DEFAULT 0,
   shares      INT UNSIGNED NOT NULL DEFAULT 0,
+  reposts     INT UNSIGNED NOT NULL DEFAULT 0,
+  follows     INT UNSIGNED NOT NULL DEFAULT 0,
   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
   INDEX idx_post_stats (post_id, captured_at)
 ) ENGINE=InnoDB;

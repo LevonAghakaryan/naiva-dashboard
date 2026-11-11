@@ -14,30 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AccountDailyStats,
+    AccountPeriodStats,
     AudienceOnlineHours,
     AudienceStats,
     IgAccount,
     Post,
     PostStats,
 )
-
-
-@dataclass(frozen=True)
-class DailyTotals:
-    views: int
-    reach: int
-    profile_views: int
-
-
-@dataclass(frozen=True)
-class PostTotals:
-    posts_count: int
-    views: int
-    reach: int
-    likes: int
-    comments: int
-    saves: int
-    shares: int
 
 
 @dataclass(frozen=True)
@@ -59,29 +42,35 @@ class AnalyticsRepository:
 
     # ---------- account_daily_stats ----------
 
-    def sum_daily_stats(self, account_id: int, start: date, end: date) -> DailyTotals:
-        row = self.db.execute(
-            select(
-                func.coalesce(func.sum(AccountDailyStats.views), 0),
-                func.coalesce(func.sum(AccountDailyStats.reach), 0),
-                func.coalesce(func.sum(AccountDailyStats.profile_views), 0),
-            ).where(
-                AccountDailyStats.ig_account_id == account_id,
-                AccountDailyStats.day.between(start, end),
-            )
-        ).one()
-        return DailyTotals(views=int(row[0]), reach=int(row[1]), profile_views=int(row[2]))
-
-    def daily_reach(self, account_id: int, start: date, end: date) -> list[tuple[date, int]]:
-        rows = self.db.execute(
-            select(AccountDailyStats.day, AccountDailyStats.reach)
+    def daily_rows(self, account_id: int, start: date, end: date) -> list[AccountDailyStats]:
+        return list(self.db.scalars(
+            select(AccountDailyStats)
             .where(
                 AccountDailyStats.ig_account_id == account_id,
                 AccountDailyStats.day.between(start, end),
             )
             .order_by(AccountDailyStats.day)
-        ).all()
-        return [(r.day, int(r.reach)) for r in rows]
+        ))
+
+    def last_followers_before(self, account_id: int, day: date) -> int | None:
+        """Followers at the newest snapshot strictly before `day`."""
+        return self.db.scalar(
+            select(AccountDailyStats.followers)
+            .where(AccountDailyStats.ig_account_id == account_id, AccountDailyStats.day < day)
+            .order_by(AccountDailyStats.day.desc())
+            .limit(1)
+        )
+
+    # ---------- account_period_stats ----------
+
+    def period_stats(self, account_id: int, end_day: date, days: int) -> AccountPeriodStats | None:
+        return self.db.scalar(
+            select(AccountPeriodStats).where(
+                AccountPeriodStats.ig_account_id == account_id,
+                AccountPeriodStats.end_day == end_day,
+                AccountPeriodStats.days == days,
+            )
+        )
 
     # ---------- posts + latest post_stats ----------
 
@@ -114,28 +103,18 @@ class AnalyticsRepository:
             stmt = stmt.where(Post.posted_at < datetime.combine(end + timedelta(days=1), time.min))
         return stmt
 
-    def post_totals(self, account_id: int, start: date, end: date,
-                    types: Sequence[str] | None = None) -> PostTotals:
-        base = self._posts_with_latest_stats(account_id, types, start, end).subquery()
-        row = self.db.execute(
-            select(
-                func.count(base.c.id),
-                func.coalesce(func.sum(base.c.views), 0),
-                func.coalesce(func.sum(base.c.reach), 0),
-                func.coalesce(func.sum(base.c.likes), 0),
-                func.coalesce(func.sum(base.c.comments), 0),
-                func.coalesce(func.sum(base.c.saves), 0),
-                func.coalesce(func.sum(base.c.shares), 0),
-            )
-        ).one()
-        return PostTotals(*(int(v) for v in row))
-
     def list_posts(self, account_id: int, types: Sequence[str] | None = None,
                    start: date | None = None, end: date | None = None,
                    ) -> list[tuple[Post, PostStats | None]]:
         """Posts with their newest snapshot, newest post first."""
         stmt = self._posts_with_latest_stats(account_id, types, start, end).order_by(Post.posted_at.desc())
         return [(r[0], r[1]) for r in self.db.execute(stmt).all()]
+
+    def first_post_at(self, account_id: int, types: Sequence[str] | None = None) -> datetime | None:
+        stmt = select(func.min(Post.posted_at)).where(Post.ig_account_id == account_id)
+        if types:
+            stmt = stmt.where(Post.type.in_(types))
+        return self.db.scalar(stmt)
 
     # ---------- audience ----------
 

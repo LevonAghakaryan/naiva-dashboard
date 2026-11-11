@@ -1,6 +1,7 @@
 """All SQLAlchemy models. Import from here so every table is registered on Base.metadata."""
 from app.models.analytics import (
     AccountDailyStats,
+    AccountPeriodStats,
     AudienceOnlineHours,
     AudienceStats,
     Post,
@@ -14,6 +15,7 @@ __all__ = [
     "User",
     "IgAccount",
     "AccountDailyStats",
+    "AccountPeriodStats",
     "Post",
     "PostStats",
     "AudienceStats",

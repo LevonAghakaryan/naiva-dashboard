@@ -7,8 +7,6 @@
   }
 
   const fmt = {
-    MONTHS,
-
     /** 48230 → 48.2K, 1200000 → 1.2M, 950 → 950 */
     compact(n) {
       n = Number(n) || 0;
@@ -48,12 +46,6 @@
 
     percent(n) {
       return trim(Number(n) || 0) + "%";
-    },
-
-    /** "2026-11-05T19:00:00" → "5 Նոյ" */
-    shortDate(iso) {
-      const d = new Date(iso);
-      return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
     },
 
     /** Relative Armenian time: "15 րոպե առաջ" */

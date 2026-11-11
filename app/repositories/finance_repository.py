@@ -72,9 +72,6 @@ class FinanceRepository:
         """Old default categories (user_id NULL) from db/schema.sql."""
         return list(self.db.scalars(select(Category).where(Category.user_id.is_(None))))
 
-    def get_own_category(self, user_id: int, category_id: int) -> Category | None:
-        return self.db.scalar(select(Category).where(Category.id == category_id, Category.user_id == user_id))
-
     def move_category(self, user_id: int, from_ids: list[int | None], type_: str, to_id: int) -> None:
         """Re-point the user's transactions of one type from some categories (None = no category) to another."""
         ids = [i for i in from_ids if i is not None]

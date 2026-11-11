@@ -13,6 +13,8 @@ python -m venv .venv
 
 copy .env.example .env          # լրացրեք DB_PASSWORD և ENCRYPTION_KEY
 mysql -u root -p -e "source db/schema.sql"
+# եթե բազան արդեն կա (սխեմա v1.1)՝ միայն migration-ը.
+# mysql -u root -p creatorly < db/migrations/2026-11-11_instagram_v2.sql
 .venv\Scripts\python.exe scripts\seed.py   # դեմո տվյալներ (@ani.travels)
 .venv\Scripts\python.exe run.py            # http://127.0.0.1:8000
 ```
@@ -38,6 +40,6 @@ scripts/       seed և այլ գործիքներ
 ## Կարգավիճակ
 
 - [x] Instagram վիճակագրություն (դեմո տվյալներով)
-- [x] Ֆինանսներ (դեմո տվյալներով, գործարքներ և համագործակցություններ՝ CRUD)
+- [x] Ֆինանսներ (դեմո տվյալներով, գործարքներ և կատեգորիաներ՝ CRUD)
 - [ ] Գլխավոր, Նամակներ ու բոտեր, Մրցակիցներ, AI օգնական
 - [ ] Instagram API-ի իրական միացում

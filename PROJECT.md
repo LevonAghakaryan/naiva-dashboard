@@ -1,7 +1,7 @@
 # Creatorly — PROJECT.md
 
 > Նոր սեսիայում ասեք՝ «կարդա PROJECT.md-ն ու շարունակենք»։ Այս ֆայլը նախագծի «հիշողությունն» է։
-> Վերջին թարմացում՝ 2026-11-09
+> Վերջին թարմացում՝ 2026-11-11
 
 ---
 
@@ -103,7 +103,7 @@ SaaS dashboard Instagram բլոգերների համար (հիմնականում
 
 ## 5. Տեխնոլոգիաներ (ՈՐՈՇՎԱԾ)
 - **Backend՝ Python + FastAPI** (uvicorn, SQLAlchemy 2, PyMySQL, pydantic-settings)
-- **Frontend՝ HTML + CSS + JS** (Jinja2 templates, առանց framework-ի, գրաֆիկներ՝ Chart.js CDN-ից)
+- **Frontend՝ HTML + CSS + JS** (Jinja2 templates, առանց framework-ի. Ֆինանսների գրաֆիկները՝ Chart.js CDN-ից, Վիճակագրությանը՝ սեփական SVG)
 - **Բազա՝ MySQL 8** (utf8mb4, InnoDB)
 - Գաղտնագրում՝ `cryptography` (Fernet)՝ Instagram token-ների համար
 - Hosting՝ DigitalOcean (սկզբում 1 droplet 2 vCPU/4 GB, $24), Cloudflare Free, Let's Encrypt, դոմեն `.am`
@@ -226,18 +226,31 @@ naiva-dashboard/
 
 Seed-ի թվերը հաշվարկվում են «այսօրվա» նկատմամբ, ուստի մի քանի օր հետո ճշգրիտ դիզայնի թվերի համար՝ `seed.py --reset`։
 
+### v2 (2026-11-11) — ըստ `C:\Users\USER\Downloads\instagram-spec.md`-ի (+ desktop/mobile նկարներ)
+Էջը ամբողջությամբ վերաշարադրված է։ Հին ներդիրները (Ընդհանուր/Reels/Posts/Stories), 4 KPI-ն և Chart.js-ը հանված են։
+- **Overview / Audience** ներդիրներ։ Ժամանակահատվածը (7/30/90) փոխում է ամբողջ էջը։ «Արտահանել»-ը տալիս է CSV (ցուցանիշներ + փոստեր)
+- 3 hero քարտ. Followers (զուտ աճ +N, New follows/Unfollows), Reach, ER (= accounts engaged ÷ reach, delta-ն pp-ով)։ Դրանցից հետո 12 ցուցանիշ (սկզբում երևում է 6-ը)։ Ամեն քարտ կոճակ է և բացում/փակում է գրաֆիկի պանելը (`chartFor`)։ Followers-ի պանելում կան «Ընդհանուր · New follows · Unfollows» ներդիրներ, Unfollows-ի աճը կարմիր է
+- Line chart-ը սեփական SVG է (`lineChart()` analytics.js-ում)՝ monotone Catmull-Rom, նախորդ շրջանի կետագիծ (7/30 օր), Max պիտակ, tooltip-ի գոտիներ (`tabindex`, aria)։ Առանցքի պիտակները, որոնք իրար վրա կընկնեին, թաքցվում են։ 90 օրում հոսքերը շաբաթական են (13 կետ)
+- Posts (10 դասավորում, տիպի ֆիլտր, ER-ը կանաչ/կարմիր՝ ըստ միջինի)։ Օրացույցում օրերը ներկված են ըստ reach-ի, կետերը ցույց են տալիս տիպը, օրը սեղմելիս ֆիլտրվում է Posts-ը (չիպով)
+- **Audience ներդիր** (ըստ օգտատիրոջ նկարի)՝ «Ով է քո լսարանը» (6 քառակուսի՝ Followers, հիմնական սեռ, տարիք, քաղաք + երկիր, ER, Non-followers reach), Gender & age (+ Top cities chip-եր), Top countries, Most active times (7×8, 09–23), Follower growth (կանաչ, առանց առանցքների), Օրական/Շաբաթական reach·views·follows սյունակներ։ Overview-ում մնացել են hero-ն, ցանցը, Posts-ը և օրացույցը
+- Երկրները՝ `audience_stats` breakdown `country` (ISO կոդ → հայերեն անուն `COUNTRY_LABELS`-ում)
+- Static ֆայլերը միանում են `asset('js/x.js')`-ով (`?v=<mtime>`), որ browser-ը հին պատճեն չօգտագործի (`app/routers/pages.py`)
+- `main.css`-ից հանված են հին էջի չօգտագործվող ոճերը (kpi, table, tabs, heatmap …)
+- Դասավորությունը container query-ներով է (`.ig`)՝ 6 → 3 → 2 սյուն, շարքերը միշտ լրիվ են։ Ստուգված է 1440/1000/800/600/390 լայնություններում (Edge headless)
+- «?» բացատրություններ. միաժամանակ բաց է մեկը
+
+**Բազա v1.2** (`db/migrations/2026-11-11_instagram_v2.sql`, MySQL-ում կիրառված է 2026-11-11)։ `account_daily_stats`-ին ավելացել են `new_follows, unfollows, non_follower_reach, accounts_engaged, interactions, likes, comments, saves, shares, reposts, link_taps`, `post_stats`-ին՝ `reposts, follows`։ Նոր աղյուսակ կա՝ `account_period_stats(end_day, days, reach, non_follower_reach, accounts_engaged)`։ Reach-ը և engaged-ը եզակի հաշիվներ են, ուստի ժամանակահատվածի թիվը վերցվում է այստեղից։ Եթե տող չկա, վերցվում է օրականների գումարը։
+`seed.py --analytics`-ը նորից ստեղծում է միայն Instagram-ի դեմո տվյալները (ֆինանսները չի փոխում)։ Վերջին 30 օրը = spec-ի թվերը (48,214 · 312K ▲12.6% · 7.9% ▲0.3 pp · 41.2K · 1.21M …)։
+
 **API.**
 | Endpoint | Ինչ է վերադարձնում |
 |---|---|
-| `GET /api/analytics/summary?days=30&type=all` | 4 KPI և % փոփոխությունը նախորդ շրջանի համեմատ |
-| `GET /api/analytics/reach-daily?days=14` | Reach-ը ըստ օրերի |
+| `GET /api/analytics/page?days=30` | Ամբողջ էջը՝ hero/grid-ի հերթականություն, 17 metric (value, previous, delta, delta_unit pct/pp/abs, good, points, prev_points, gran day/week), day/week buckets, ժամանակահատվածի posts |
+| `GET /api/analytics/posts?month=YYYY-MM` | Ամսվա փոստերը օրացույցի համար + `first_month` |
 | `GET /api/analytics/audience` | Սեռ, տարիք, քաղաքներ (թոփ 5) |
-| `GET /api/analytics/active-hours` | Heatmap 7 × 2-ժամյա հատվածներ + լավագույն ժամը/օրերը |
-| `GET /api/analytics/posts?type=&sort=views&days=30&limit=50` | Փոստերի աղյուսակ ER-ով (sort՝ views/reach/likes/comments/saves/shares/er/posted_at) |
+| `GET /api/analytics/active-hours` | Heatmap 7 × 8 երկժամյա հատված (09…23) + լավագույն ժամը |
 
-`type` = `all | reels | posts (post+carousel) | stories`։
-`type=all`-ի դեպքում KPI-ներն են Views, Reach, Պրոֆիլի դիտումներ, Saves։ Մնացած ներդիրներում՝ Views, Reach, Ինտերակցիաներ, Հրապարակումներ։
-ER = (likes + comments + saves + shares) / reach × 100։
+Posts-ում stories չկան։ Փոստի ER = (likes + comments + saves + shares) / reach × 100։
 Մինչև auth-ը, «ընթացիկ հաշիվը» բազայի առաջին `ig_account`-ն է։
 Instagram API-ին իրական միացումը (`instagram_client.py`) կանենք Meta App Review-ից հետո։ Մինչ այդ օգտագործում ենք seed տվյալներ։
 
