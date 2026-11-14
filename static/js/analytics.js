@@ -15,7 +15,7 @@
   ];
   const FOLLOWER_KEYS = ["followers", "new_follows", "unfollows"];
   const LINE_COLORS = { new_follows: "#059669", follows: "#059669", unfollows: "#DC2626", er: "#DB2777" };
-  const HEAT = ["#EEF3FF", "#C7D7FE", "#93B4FB", "#5B8DF6", "#2563EB"];
+  const HEAT = ["#EEF2FF", "#C9D7FF", "#9DB8FC", "#6593F7", "#2F6BF0"];
 
   const I = {
     heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -626,14 +626,15 @@
     pts.forEach((v, i) => {
       const h = maxV > 0 ? Math.max(v > 0 ? 2 : 0, (v / maxV) * plotH) : 0;
       const x = i * slot + (slot - bw) / 2, y = 4 + plotH - h;
-      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(4, bw / 3).toFixed(1)}" fill="${i === maxI ? "#2563EB" : "#93C5FD"}"><title>${bucketLabel(buckets[i])} · ${fmt.full(v)}</title></rect>`;
+      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(4, bw / 3).toFixed(1)}" fill="${i === maxI ? "url(#rb-max)" : "url(#rb)"}"><title>${bucketLabel(buckets[i])} · ${fmt.full(v)}</title></rect>`;
     });
     s += xAxisText([
       { x: 0, text: dm(buckets[0].start), anchor: "start" },
       { x: W, text: dm(buckets[n - 1].start), anchor: "end" },
     ], H - 4);
     const aria = `${$("#daily-title").textContent}, վերջին ${data.days} օր։ Ընդհանուրը՝ ${metricText(m)}։ ${$("#daily-max").textContent}`;
-    host.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">${s}</svg>`;
+    const defs = `<defs><linearGradient id="rb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A5C4FF"/><stop offset="1" stop-color="#C7DAFF"/></linearGradient><linearGradient id="rb-max" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F8BFF"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>`;
+    host.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">${defs}${s}</svg>`;
   }
 
   function renderGrowth() {
@@ -648,24 +649,24 @@
   function renderWho() {
     const a = audience;
     const M = data ? data.metrics : null;
-    const tile = (l, v, sub, cls = "") => `<div class="who-tile"><div class="l">${esc(l)}</div><div class="v num" title="${esc(v)}">${esc(v)}</div><div class="s ${cls}">${esc(sub)}</div></div>`;
+    const tile = (l, v, sub, cls = "", tint = "") => `<div class="who-tile ${tint}"><div class="l">${esc(l)}</div><div class="v num" title="${esc(v)}">${esc(v)}</div><div class="s ${cls}">${esc(sub)}</div></div>`;
     const top = (list) => (list && list.length ? list.reduce((x, y) => (y.percent > x.percent ? y : x)) : null);
     let html = "";
     if (M) {
       const d = M.followers.delta;
-      html += tile("Followers", fmt.full(M.followers.value), d === null ? "" : `${d >= 0 ? "+" : "−"}${fmt.full(Math.abs(d))} ${data.days} օրում`, "good");
+      html += tile("Followers", fmt.full(M.followers.value), d === null ? "" : `${d >= 0 ? "+" : "−"}${fmt.full(Math.abs(d))} ${data.days} օրում`, "good", "c-blue");
     }
     if (a) {
       const g = top(a.gender), others = a.gender.filter((x) => x !== g);
-      html += tile(g ? g.label : "Սեռ", g ? fmt.percent(g.percent) : "—", others.map((o) => `${o.label.toLowerCase()}՝ ${fmt.percent(o.percent)}`).join(" · "));
+      html += tile(g ? g.label : "Սեռ", g ? fmt.percent(g.percent) : "—", others.map((o) => `${o.label.toLowerCase()}՝ ${fmt.percent(o.percent)}`).join(" · "), "", "c-pink");
       const ag = top(a.age), ag2 = a.age.filter((x) => x !== ag).sort((x, y) => y.percent - x.percent)[0];
-      html += tile("Հիմնական տարիք", ag ? ag.label : "—", ag ? `${fmt.percent(ag.percent)}${ag2 ? ` · ${ag2.label}՝ ${fmt.percent(ag2.percent)}` : ""}` : "");
+      html += tile("Հիմնական տարիք", ag ? ag.label : "—", ag ? `${fmt.percent(ag.percent)}${ag2 ? ` · ${ag2.label}՝ ${fmt.percent(ag2.percent)}` : ""}` : "", "", "c-amber");
       const c = a.cities[0], co = a.countries[0];
-      html += tile("Հիմնական քաղաք", c ? c.label : "—", [c ? fmt.percent(c.percent) : "", co ? `${co.label}՝ ${fmt.percent(co.percent)}` : ""].filter(Boolean).join(" · "));
+      html += tile("Հիմնական քաղաք", c ? c.label : "—", [c ? fmt.percent(c.percent) : "", co ? `${co.label}՝ ${fmt.percent(co.percent)}` : ""].filter(Boolean).join(" · "), "", "c-teal");
     }
     if (M) {
-      html += tile("Engagement rate", pct(M.er.value), `վերջին ${data.days} օր`);
-      html += tile("Non-followers reach", pct(M.non_followers.value), "reach-ի մաս");
+      html += tile("Engagement rate", pct(M.er.value), `վերջին ${data.days} օր`, "", "c-violet");
+      html += tile("Non-followers reach", pct(M.non_followers.value), "reach-ի մաս", "", "c-green");
     }
     $("#who-tiles").innerHTML = html;
   }
@@ -674,7 +675,7 @@
     if (!audience) return;
     const a = audience;
     renderWho();
-    const colors = ["#2563EB", "#F59E0B", "#CBD5E1"];
+    const colors = ["linear-gradient(90deg,#5B8DF6,#2563EB)", "linear-gradient(90deg,#FBBF24,#F59E0B)", "#CBD5E1"];
     $("#gender-age").innerHTML = !a.gender.length && !a.age.length
       ? `<p class="empty-note">Լսարանի տվյալներ դեռ չկան</p>`
       : `<div class="gender-bar" role="img" aria-label="${esc(a.gender.map((g) => `${g.label} ${fmt.percent(g.percent)}`).join(", "))}">

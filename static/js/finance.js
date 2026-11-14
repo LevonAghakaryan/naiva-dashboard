@@ -380,6 +380,16 @@
     },
   };
 
+  /** Chart.js vertical gradient (scriptable color), top → bottom of the plot area. */
+  const vGrad = (top, bottom) => (c) => {
+    const { ctx, chartArea: a } = c.chart;
+    if (!a) return bottom;
+    const g = ctx.createLinearGradient(0, a.top, 0, a.bottom);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    return g;
+  };
+
   function renderCharts() {
     const m = state.data.monthly;
     const labels = m.map((x) => x.label);
@@ -390,8 +400,8 @@
       const barData = {
         labels,
         datasets: [
-          { label: "Եկամուտ", data: m.map((x) => x.income), backgroundColor: C.inc, borderRadius: 4, maxBarThickness: 18 },
-          { label: "Ծախս", data: m.map((x) => x.expense), backgroundColor: C.amber, borderRadius: 4, maxBarThickness: 18 },
+          { label: "Եկամուտ", data: m.map((x) => x.income), backgroundColor: vGrad("#34D399", "#047857"), borderRadius: 6, maxBarThickness: 18 },
+          { label: "Ծախս", data: m.map((x) => x.expense), backgroundColor: vGrad("#FDE68A", "#F59E0B"), borderRadius: 6, maxBarThickness: 18 },
         ],
       };
       if (charts.bar) { charts.bar.data = barData; charts.bar.update(); } else {
@@ -418,7 +428,7 @@
       const lineData = {
         labels,
         datasets: [{
-          data: nets, borderColor: C.blue, backgroundColor: "rgba(37, 99, 235, .08)", fill: true, tension: .35,
+          data: nets, borderColor: C.blue, backgroundColor: vGrad("rgba(37, 99, 235, .24)", "rgba(37, 99, 235, 0)"), fill: true, tension: .35,
           borderWidth: 2, pointRadius: nets.map((_, i) => (i === nets.length - 1 ? 5 : 0)),
           pointHoverRadius: 5, pointBackgroundColor: C.blue,
         }],

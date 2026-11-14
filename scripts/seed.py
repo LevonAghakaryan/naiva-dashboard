@@ -4,6 +4,7 @@ Usage (from the project folder, after db/schema.sql has been run in MySQL):
     .venv\\Scripts\\python.exe scripts\\seed.py              # fails if demo data already exists
     .venv\\Scripts\\python.exe scripts\\seed.py --reset      # deletes the demo user and re-creates it
     .venv\\Scripts\\python.exe scripts\\seed.py --analytics  # re-creates only the Instagram data
+    .venv\\Scripts\\python.exe scripts\\seed.py --competitors  # re-creates only the demo competitors
 
 Last-30-day totals are calibrated to the design (instagram-spec.md):
 Followers 48,214 (+3,940 / −1,060), Reach 312K ▲12.6%, ER 7.9% ▲0.3 pp, Likes 41.2K ▲8.7%,
@@ -38,6 +39,7 @@ from app.models import (  # noqa: E402
     User,
 )
 from core.database import SessionLocal  # noqa: E402
+from scripts.seed_competitors import delete_competitors, has_competitors, seed_competitors  # noqa: E402
 from scripts.seed_finance import delete_finance, has_finance, seed_finance  # noqa: E402
 
 DEMO_EMAIL = "ani.demo@example.com"
@@ -194,6 +196,7 @@ def delete_demo(db: Session) -> bool:
     if user is None:
         return False
     delete_finance(db, user.id)
+    delete_competitors(db, user.id)
     delete_analytics(db, select(IgAccount.id).where(IgAccount.user_id == user.id))
     db.execute(delete(IgAccount).where(IgAccount.user_id == user.id))
     db.execute(delete(User).where(User.id == user.id))
@@ -209,6 +212,8 @@ def seed(db: Session, today: date | None = None, rng_seed: int = 42) -> IgAccoun
     db.add(user)
     seed_analytics(db, acc, today, rng_seed)
     seed_finance(db, user, today)
+    db.flush()
+    seed_competitors(db, user, today)
     return acc
 
 
@@ -281,6 +286,7 @@ def main() -> int:
     parser.add_argument("--reset", action="store_true", help="delete existing demo data first")
     parser.add_argument("--finance", action="store_true", help="re-create only the demo user's finance data")
     parser.add_argument("--analytics", action="store_true", help="re-create only the demo Instagram data")
+    parser.add_argument("--competitors", action="store_true", help="re-create only the demo competitors")
     args = parser.parse_args()
 
     try:
@@ -298,6 +304,16 @@ def main() -> int:
                 print(f"Instagram-ի դեմո տվյալները նորից ստեղծված են՝ @{acc.username}: "
                       f"{len(acc.daily_stats)} օր, {len(acc.posts)} փոստ/story։")
                 return 0
+            if args.competitors:
+                if existing is None:
+                    print("Դեմո օգտատեր չկա։ Նախ՝ scripts/seed.py")
+                    return 1
+                delete_competitors(db, existing.id)
+                comps = seed_competitors(db, existing)
+                db.commit()
+                print(f"Մրցակիցների դեմո տվյալները նորից ստեղծված են՝ {len(comps)} հաշիվ, "
+                      f"{sum(len(c.posts) for c in comps)} փոստ։")
+                return 0
             if args.finance:
                 if existing is None:
                     print("Դեմո օգտատեր չկա։ Նախ՝ scripts/seed.py")
@@ -309,6 +325,11 @@ def main() -> int:
                 return 0
             if existing is not None:
                 if not args.reset:
+                    if not has_competitors(db, existing.id):
+                        seed_competitors(db, existing)
+                        db.commit()
+                        print("Մրցակիցների դեմո տվյալներն ավելացված են։")
+                        return 0
                     if not has_finance(db, existing.id):
                         seed_finance(db, existing)
                         db.commit()

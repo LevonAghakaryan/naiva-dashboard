@@ -1,7 +1,10 @@
--- Creatorly — MySQL 8 schema (v1.2)
+-- Creatorly — MySQL 8 schema (v1.3)
 -- v1.1: + audience_online_hours, + ai_usage, + ai_messages.blocks
 -- v1.2: account_daily_stats + follows/unfollows/engagement columns, + account_period_stats,
 --       post_stats + reposts/follows (db/migrations/2026-11-11_instagram_v2.sql)
+-- v1.3: competitors + bio/website/picture/sync state, competitor_daily_stats + follows_count,
+--       competitor_posts + views/media_url/thumbnail_url, likes NULL = hidden,
+--       unique (competitor_id, ig_media_id) (2026-11-14_competitors.sql)
 -- utf8mb4 for Armenian text and emoji in DMs/captions
 
 SET NAMES utf8mb4;
@@ -256,7 +259,12 @@ CREATE TABLE competitors (
   username   VARCHAR(64) NOT NULL,
   ig_user_id VARCHAR(64),
   name       VARCHAR(120),
+  biography  TEXT,
+  website    VARCHAR(255),
+  profile_picture_url VARCHAR(1024),
   added_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_synced_at DATETIME,
+  sync_error VARCHAR(255),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   UNIQUE KEY uq_competitor (user_id, username)
 ) ENGINE=InnoDB;
@@ -266,6 +274,7 @@ CREATE TABLE competitor_daily_stats (
   competitor_id BIGINT UNSIGNED NOT NULL,
   day           DATE NOT NULL,
   followers     INT UNSIGNED NOT NULL,
+  follows_count INT UNSIGNED,
   media_count   INT UNSIGNED NOT NULL,
   FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE,
   UNIQUE KEY uq_comp_day (competitor_id, day)
@@ -274,15 +283,19 @@ CREATE TABLE competitor_daily_stats (
 CREATE TABLE competitor_posts (
   id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   competitor_id BIGINT UNSIGNED NOT NULL,
-  ig_media_id   VARCHAR(64) NOT NULL UNIQUE,
+  ig_media_id   VARCHAR(64) NOT NULL,
   type          ENUM('post','carousel','reels') NOT NULL,
   caption       TEXT,
   permalink     VARCHAR(1024),
-  likes         INT UNSIGNED NOT NULL DEFAULT 0,
+  media_url     VARCHAR(1024),
+  thumbnail_url VARCHAR(1024),
+  likes         INT UNSIGNED,                    -- NULL: the owner hides like counts
   comments      INT UNSIGNED NOT NULL DEFAULT 0,
+  views         INT UNSIGNED,                    -- NULL: not returned
   posted_at     DATETIME NOT NULL,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_comp_media (competitor_id, ig_media_id),
   INDEX idx_comp_posts (competitor_id, posted_at)
 ) ENGINE=InnoDB;
 

@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.models import IgAccount
 from app.repositories.analytics_repository import AnalyticsRepository
+from app.repositories.competitor_repository import CompetitorRepository
 from app.repositories.finance_repository import FinanceRepository
 from app.services.analytics_service import AnalyticsService
+from app.services.competitor_service import CompetitorService
 from app.services.finance_service import FinanceService
 from core.database import SessionLocal
 
@@ -45,3 +47,10 @@ def get_finance_service(
 ) -> FinanceService:
     # Finance belongs to the user, not to one Instagram account.
     return FinanceService(FinanceRepository(db), account.user_id)
+
+
+def get_competitor_service(
+    db: Session = Depends(get_db),
+    account: IgAccount = Depends(get_current_ig_account),
+) -> CompetitorService:
+    return CompetitorService(CompetitorRepository(db), AnalyticsRepository(db), account)

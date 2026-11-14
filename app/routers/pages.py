@@ -45,3 +45,8 @@ def analytics_page(request: Request, account: IgAccount | None = Depends(get_opt
 @router.get("/finance")
 def finance_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
     return templates.TemplateResponse(request, "finance.html", _page_context(account, "finance"))
+
+
+@router.get("/competitors")
+def competitors_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
+    return templates.TemplateResponse(request, "competitors.html", _page_context(account, "competitors"))

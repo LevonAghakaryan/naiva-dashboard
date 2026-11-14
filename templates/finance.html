@@ -105,12 +105,12 @@
       <p class="balance-note" id="bal-spent"></p>
       <p class="balance-forecast" id="bal-forecast" hidden></p>
     </div>
-    <div class="card money income">
+    <div class="card money income tint tint-green">
       <div class="money-head"><span class="ico-sq in"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.in|safe }}</svg></span>Եկամուտ</div>
       <div class="money-value" id="inc-value">—</div>
       <p class="money-meta" id="inc-meta"></p>
     </div>
-    <div class="card money expense">
+    <div class="card money expense tint tint-red">
       <div class="money-head"><span class="ico-sq out"><svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.out|safe }}</svg></span>Ծախս</div>
       <div class="money-value" id="exp-value">—</div>
       <p class="money-meta" id="exp-meta"></p>
@@ -123,7 +123,7 @@
 
   <!-- 4. Main: transactions (left) + calendar & pending (right) -->
   <div class="fin-main">
-    <section class="card cal-card" aria-labelledby="cal-title">
+    <section class="card cal-card tint tint-blue" aria-labelledby="cal-title">
       <div class="cal-head">
         <h2 id="cal-title" class="month-label"></h2>
         <button class="help-btn" type="button" id="cal-help-btn" aria-expanded="false" aria-controls="cal-help" aria-label="Ինչպես կարդալ օրացույցը">?</button>
@@ -173,14 +173,14 @@
 
   <!-- 5. Charts -->
   <section class="fin-charts">
-    <div class="card">
+    <div class="card tint tint-green">
       <div class="chart-head">
         <h2>Եկամուտ և ծախս · 6 ամիս</h2>
         <div class="chart-legend"><span><i style="background:#047857"></i>Եկամուտ</span><span><i style="background:#F59E0B"></i>Ծախս</span></div>
       </div>
       <div class="chart-box-sm"><canvas id="bar-chart" role="img" aria-label="Եկամուտ և ծախս՝ վերջին 6 ամիսը"></canvas></div>
     </div>
-    <div class="card">
+    <div class="card tint tint-amber">
       <div class="chart-head"><h2 id="share-title">Ծախսն ըստ կատեգորիաների</h2></div>
       <div class="seg-small share-seg" role="group" aria-label="Տեսակ">
         <button type="button" data-share="expense" aria-pressed="true">Ծախս</button>
@@ -188,7 +188,7 @@
       </div>
       <div id="shares" role="img"></div>
     </div>
-    <div class="card">
+    <div class="card tint tint-indigo">
       <div class="chart-head"><h2>Մնացորդի դինամիկա</h2><b id="line-last"></b></div>
       <div class="chart-box-sm"><canvas id="line-chart" role="img" aria-label="Մնացորդը ըստ ամիսների"></canvas></div>
       <p class="chart-note" id="line-note"></p>

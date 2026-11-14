@@ -29,6 +29,11 @@ class Settings(BaseSettings):
 
     encryption_key: str = ""
 
+    # Instagram Graph API (Business Discovery for competitors). Off until Meta App Review:
+    # with it off, a new competitor is saved by username only and filled by the nightly sync later.
+    instagram_sync: bool = False
+    graph_api_version: str = "v24.0"
+
     @property
     def sqlalchemy_url(self) -> str:
         if self.database_url:

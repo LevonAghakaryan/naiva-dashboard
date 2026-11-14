@@ -1,7 +1,7 @@
 # Creatorly — PROJECT.md
 
 > Նոր սեսիայում ասեք՝ «կարդա PROJECT.md-ն ու շարունակենք»։ Այս ֆայլը նախագծի «հիշողությունն» է։
-> Վերջին թարմացում՝ 2026-11-11
+> Վերջին թարմացում՝ 2026-11-14
 
 ---
 
@@ -89,8 +89,10 @@ SaaS dashboard Instagram բլոգերների համար (հիմնականում
 ---
 
 ## 4. Դիզայնի կանոններ
-- Ոճ՝ սպիտակ քարտեր, ֆոն `#F4F6FA`, accent `#2563EB`, տեքստ `#0F172A`, muted `#5B6577`
-- Քարտեր՝ radius 16px, border `#E6E9EF`, կոճակներ ≥ 44px
+- Ոճ՝ սպիտակ քարտեր, ֆոն `#F5F7FB` (նուրբ radial gradient-ներով), accent `#2563EB`, տեքստ `#0F172A`, muted `#5B6577`
+- Քարտեր՝ radius 20px, border `#E8ECF3`, փափուկ ստվեր (`--shadow`), կոճակներ ≥ 44px
+- Գունավոր gradient քարտեր (2026-11-14)՝ `class="card tint tint-pink"` (blue/indigo/violet/pink/rose/amber/orange/green/teal/red). Ձախ վերևի անկյունում նուրբ գույն է։ Հիմնական կոճակը gradient է (`--grad-blue`), գրաֆիկների սյուները՝ gradient (Chart.js-ում `vGrad()`)
+- Sidebar՝ gradient լոգո ✦, ակտիվ բաժինը բաց կապույտ gradient-ով, օգտատիրոջ քարտում կանաչ «online» կետ։ Հեռախոսի ներքևի nav-ն ունի 6 կետ
 - Ֆոնտեր՝ Inter (լատիներեն/թվեր) + Noto Sans Armenian
 - Ձախ sidebar (240px) + բովանդակություն, mobile-ում sidebar-ը բարձրանում է վերև
 - Աճ՝ կանաչ pill (`#047857` / `#ECFDF5`), անկում՝ կարմիր (`#B91C1C` / `#FEF2F2`)
@@ -150,7 +152,7 @@ naiva-dashboard/
 ---
 
 ## 7. Բազա
-6 բլոկ, 22 աղյուսակ (`db/schema.sql` v1.1, աշխատանքային տարբերակը նախագծի մեջ է).
+6 բլոկ, 23 աղյուսակ (`db/schema.sql` v1.3, աշխատանքային տարբերակը նախագծի մեջ է).
 - Users: `users`, `ig_accounts`
 - Վիճակագրություն: `account_daily_stats`, `posts`, `post_stats`, `audience_stats`, `audience_online_hours`
 - Նամակներ: `contacts`, `conversations`, `messages`, `bot_rules`, `bot_runs`
@@ -287,10 +289,49 @@ Instagram API-ին իրական միացումը (`instagram_client.py`) կան�
 
 ---
 
+## 11.3 Մաս 3. «Մրցակիցներ» էջ ✅ (2026-11-14)
+
+Իրականացված է ըստ «Մրցակիցներ» էջի առաջադրանքի (desktop/mobile նկարներ)։ Էջը՝ `/competitors` (sidebar-ում և հեռախոսի nav-ում ակտիվ է)։
+
+**Տվյալներ (Instagram Business Discovery, միայն հրապարակային).** Պրոֆիլից վերցնում ենք username, name, biography, website, profile_picture_url, followers_count, follows_count և media_count։ Ամեն փոստից՝ caption, like_count, comments_count, view_count, media_type/media_product_type, permalink, media_url, thumbnail_url և timestamp։ Like-երը թաքցված լինելու դեպքում `likes = NULL` է։
+- **Saves, Shares, Reach-ը և լսարանը հասանելի չեն** (insights են), ուստի համեմատության 6-րդ ցուցանիշը Saves-ի փոխարեն **Views (միջին)** է, իսկ փոստերում Shares/Saves-ի փոխարեն ցույց են տրվում Views և ER։
+- «Դու»-ն չափվում է նույն կերպ՝ քո փոստերի likes/comments/views-ով, որ համեմատությունը արդար լինի։
+- ER = (likes + comments) / followers × 100, միջինը մեկ փոստի համար։ Posts/շաբ. = փոստեր / (օրեր / 7)։ Likes, Comments և Views-ը միջինն են մեկ փոստի համար։ Ժամանակահատվածը 7/30/90 օր է։
+
+**Ֆունկցիոնալ.**
+- Քարտեր՝ @handle, ✕, ↗ (Instagram), avatar՝ գույնի օղակով, Followers։ Քարտին սեղմելիս բացվում է «Դեմ առ դեմ»-ը (քո քարտից՝ «Բոլորի հետ») և էկրանը սահում է բաժնին։
+- «Ավելացնել»-ը ներկառուցված ձև է (handle, @handle կամ հղում), առավելագույնը 10 մրցակից։ Սինք չեղած մրցակցի քարտին գրված է «Սպասում է sync-ի»։
+- Համեմատություն. «Բոլորի հետ» (diverging bar, տեղ, %, բացվող դասակարգում + գրաֆիկ, «Դիտել բոլոր գրաֆիկները»՝ 6 քառակուսի) և «Դեմ առ դեմ» (ընտրիչ, ամփոփում X/6, 6 զույգ քարտ), ինչպես նաև «?» բացատրություն։
+- Փոստեր. տեսակ, դասավորում (Likes / Comments / Views / ER / Վերջինը) և էջավորում՝ 5-ական։ Շատ էջերի դեպքում ցույց է տրվում «1 … 5 6 7 … 14», հեռախոսում՝ «1 … 6 … 14»։
+- Responsive-ը container query-ներով է, իսկ քարտերը՝ 5 → 4 → 3 → 2 (≤1300/1000/700px)։
+
+**Ֆայլեր.** `app/models/competitor.py`, `app/integrations/instagram_discovery.py` (Graph API client՝ `urllib`-ով), `competitor_repository.py`, `competitor_service.py` (+ sync/upsert), `schemas/competitor.py`, `routers/competitor_api.py`, `templates/competitors.html`, `static/css/competitors.css`, `static/js/competitors.js`, `scripts/seed_competitors.py`, `scripts/sync_competitors.py` (գիշերային job)։
+
+**Բազա v1.3** (`db/migrations/2026-11-14_competitors.sql`, MySQL-ում կիրառված է 2026-11-14).
+- `competitors` + biography, website, profile_picture_url, last_synced_at, sync_error;
+- `competitor_daily_stats` + follows_count;
+- `competitor_posts` + views, media_url, thumbnail_url, likes NULL. Unique-ը `(competitor_id, ig_media_id)` է, որ նույն հաշվին կարողանան հետևել տարբեր օգտատերեր։
+
+**Կարգավորում.** `.env`-ում `INSTAGRAM_SYNC=false`-ը լռելյայն է։ Այդ դեպքում մրցակիցը պահվում է միայն handle-ով, և Instagram-ին դիմում չի լինում։ Meta App Review-ից հետո պետք է դնել `true` (`GRAPH_API_VERSION=v24.0`)։
+
+**Դեմո.** `seed.py --competitors` (6 մրցակից, 180 օր, ~420 փոստ, @hayk.eats-ի որոշ փոստերում likes-ը թաքցված է)։
+
+**API.**
+| Endpoint | Ինչ է անում |
+|---|---|
+| `GET /api/competitors/page?days=30` | Մասնակիցներ (դու + մրցակիցներ, 6 ցուցանիշ, followers_delta, bio …) + ժամանակահատվածի փոստեր (ER, er_good) |
+| `POST /api/competitors` | `{username}`. ստուգումներ՝ քո հաշիվը, կրկնություն, ≤10, ձևաչափ |
+| `DELETE /api/competitors/{id}` | Հեռացնում է պատմության հետ միասին |
+
+Ստուգված է MySQL-ով (API + UI), SQLite-ով (`seed --reset`-ի ճանապարհը), mock-ված Business Discovery-ով (sync, upsert, մերժում) և Edge headless-ով 375/768/1280/1440px լայնություններում (կտրվածքներ և horizontal scroll չկան)։ Ինտերակցիաներն էլ են ստուգված՝ ✕, ↗, քարտի click/Enter, էջավորում, ֆիլտրեր, ավելացում և հեռացում։
+
+---
+
 ## 12. Հաջորդ քայլեր (ընդհանուր)
 - [x] Մաս 1-ի կոդը (Վիճակագրություն)
 - [x] Մաս 2՝ Ֆինանսներ (v2՝ 2026-11-09)
-- [ ] Մյուս էջերը՝ մեկ առ մեկ (Նամակներ ու բոտեր, Մրցակիցներ, AI օգնական, Գլխավոր՝ վերջում)
+- [x] Մաս 3՝ Մրցակիցներ (2026-11-14)
+- [ ] Մյուս էջերը՝ մեկ առ մեկ (Նամակներ ու բոտեր, AI օգնական, Գլխավոր՝ վերջում)
 - [x] GitHub repo՝ https://github.com/LevonAghakaryan/naiva-dashboard (branch `main`)
 - [ ] Ստեղծել Meta Developer app և պատրաստվել App Review-ին
 - [ ] Ընտրել վերջնական անունը և դոմենը

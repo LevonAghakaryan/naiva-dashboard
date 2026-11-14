@@ -7,6 +7,7 @@ from app.models.analytics import (
     Post,
     PostStats,
 )
+from app.models.competitor import Competitor, CompetitorDailyStats, CompetitorPost
 from app.models.finance import Category, Deal, Transaction
 from app.models.ig_account import IgAccount
 from app.models.user import User
@@ -23,4 +24,7 @@ __all__ = [
     "Category",
     "Deal",
     "Transaction",
+    "Competitor",
+    "CompetitorDailyStats",
+    "CompetitorPost",
 ]
