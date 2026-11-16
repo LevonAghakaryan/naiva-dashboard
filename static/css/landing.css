@@ -1,0 +1,50 @@
+/* Landing (public). Source of truth: creatorly-landing-desktop.md / -mobile.md */
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #fff; -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; }
+section[id] { scroll-margin-top: 68px; }
+.lw { container-type: inline-size; width: 100%; font-family: Inter, "Noto Sans Armenian", sans-serif; color: #0F172A; background: #fff; }
+.in { max-width: 1180px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; }
+.btn { font: inherit; font-size: 14px; font-weight: 600; padding: 0 18px; border-radius: 12px; border: 1px solid #E2E8F0; background: #fff; color: #0F172A; cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; white-space: nowrap; }
+.pri { background: linear-gradient(135deg, #6366F1, #2563EB); border-color: transparent; color: #fff; box-shadow: 0 8px 20px rgba(37, 99, 235, .25); }
+.ghost { border-color: transparent; background: transparent; }
+.eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #4F46E5; background: #EEF2FF; padding: 6px 12px; border-radius: 999px; }
+.h2 { margin: 0; font-size: 36px; font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; }
+.lead { margin: 0; font-size: 17px; line-height: 1.6; color: #475569; }
+.g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.fcard { border: 1px solid #EEF1F5; border-radius: 20px; padding: 22px; background: linear-gradient(160deg, #FFFFFF 0%, #F8FAFC 100%); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.nav a { font-size: 14px; font-weight: 600; color: #475569; padding: 8px 10px; border-radius: 8px; }
+.nav a:hover { color: #0F172A; background: #F1F5F9; }
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+.sec { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+details { border: 1px solid #EEF1F5; border-radius: 16px; padding: 16px 18px; background: #fff; }
+summary { cursor: pointer; font-weight: 700; font-size: 15px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+summary::-webkit-details-marker { display: none; }
+details[open] summary .pm { transform: rotate(45deg); }
+.pm { transition: transform .15s; }
+
+/* Plans */
+.plan { position: relative; display: flex; flex-direction: column; gap: 18px; padding: 26px; border-radius: 24px; min-width: 0; box-sizing: border-box; border: 1px solid #E9ECF3; background: #fff; }
+.plan.pop { border: 2px solid transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #DB2777, #7C3AED, #2563EB) border-box; box-shadow: 0 24px 50px rgba(124, 58, 237, .16); }
+.plan-name { font-size: 15px; font-weight: 800; letter-spacing: .2px; color: #334155; }
+.plan.pop .plan-name { background: linear-gradient(90deg, #DB2777, #7C3AED); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.plan-btn { font: inherit; font-size: 15px; font-weight: 700; min-height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: #F1F5F9; color: #0F172A; }
+.plan.pop .plan-btn { background: linear-gradient(135deg, #7C3AED, #2563EB); color: #fff; box-shadow: 0 10px 22px rgba(79, 70, 229, .3); }
+.ck { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 1px; }
+.ck.y { background: #DCFCE7; color: #047857; }
+.ck.n { background: #F1F5F9; color: #94A3B8; }
+
+@container (max-width: 900px) {
+  .in { padding: 0 18px; }
+  .hero { grid-template-columns: 1fr; gap: 28px; }
+  .g3, .plans, .sec { grid-template-columns: 1fr; }
+  .nav { display: none !important; }
+  .h2 { font-size: 28px; }
+  .hide-m { display: none !important; }
+  .h1 { font-size: 34px !important; }
+  .btn { min-height: 40px; padding: 0 14px; }
+  .plans { gap: 26px; }
+}

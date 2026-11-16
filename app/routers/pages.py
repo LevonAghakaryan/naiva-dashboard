@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.dependencies import get_optional_ig_account
@@ -32,9 +31,14 @@ def _page_context(account: IgAccount | None, active: str) -> dict:
 
 
 @router.get("/")
-def home():
-    # Only the analytics page exists so far.
-    return RedirectResponse("/analytics")
+def landing(request: Request):
+    """Public landing page. Until auth exists, "Մուտք / Գրանցվել" lead straight to /home."""
+    return templates.TemplateResponse(request, "landing.html", {"app_name": settings.app_name, "enter_url": "/home"})
+
+
+@router.get("/home")
+def home_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
+    return templates.TemplateResponse(request, "home.html", _page_context(account, "home"))
 
 
 @router.get("/analytics")

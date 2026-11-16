@@ -10,6 +10,7 @@ from app.repositories.finance_repository import FinanceRepository
 from app.services.analytics_service import AnalyticsService
 from app.services.competitor_service import CompetitorService
 from app.services.finance_service import FinanceService
+from app.services.home_service import HomeService
 from core.database import SessionLocal
 
 NO_ACCOUNT_MESSAGE = "Բազայում Instagram հաշիվ չկա։ Գործարկեք scripts/seed.py-ը դեմո տվյալների համար։"
@@ -54,3 +55,15 @@ def get_competitor_service(
     account: IgAccount = Depends(get_current_ig_account),
 ) -> CompetitorService:
     return CompetitorService(CompetitorRepository(db), AnalyticsRepository(db), account)
+
+
+def get_home_service(
+    db: Session = Depends(get_db),
+    account: IgAccount = Depends(get_current_ig_account),
+) -> HomeService:
+    return HomeService(
+        AnalyticsService(AnalyticsRepository(db), account),
+        FinanceService(FinanceRepository(db), account.user_id),
+        CompetitorService(CompetitorRepository(db), AnalyticsRepository(db), account),
+        FinanceRepository(db),
+    )
