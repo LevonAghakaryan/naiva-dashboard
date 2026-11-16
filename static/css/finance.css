@@ -447,3 +447,57 @@ body.sheet-open { overflow: hidden; }
   .chart-box-sm { height: 180px; }
   .fin-toast { top: 12px; }
 }
+
+/* ---------- Yearly summary («Տարեկան ամփոփում») — spec: finance year summary, container ≤760px ---------- */
+.fin-actions { display: flex; gap: 10px; align-items: center; }
+.btn-year { background: linear-gradient(135deg, #F5F3FF, #fff); border-color: #DDD6FE; color: #5B21B6; padding: 10px 18px; font-weight: 600; }
+.btn-year:hover { border-color: #C4B5FD; }
+.btn-year svg, .btn-year-big svg { width: 18px; height: 18px; }
+.btn-year-big { font: inherit; min-height: 52px; border-radius: 16px; border: 1px solid #DDD6FE; background: linear-gradient(135deg, #F5F3FF, #FFFFFF); color: #5B21B6; font-size: 15px; font-weight: 700; align-items: center; justify-content: center; gap: 10px; cursor: pointer; width: 100%; }
+@media (max-width: 767px) { .btn-year-big { display: flex !important; } }
+body.y-open { overflow: hidden; }
+
+.yv { position: fixed; inset: 0; z-index: 60; overflow-y: auto; background: #F4F6FA; container-type: inline-size; font-family: Inter, "Noto Sans Armenian", sans-serif; color: #0F172A; }
+.yv[hidden] { display: none; }
+.yv .muted { color: #5B6577; }
+.yin { max-width: 1180px; margin: 0 auto; padding: 24px 28px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; }
+.ycard { background: #fff; border: 1px solid #E6E9EF; border-radius: 18px; padding: 18px; box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.yh { margin: 0; font-size: 16px; font-weight: 700; white-space: nowrap; }
+.ykpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ykv { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.y2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ystats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.yq { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.yhead { display: grid; grid-template-columns: minmax(120px, 1.3fr) repeat(3, minmax(90px, 1fr)) minmax(80px, 1.2fr) 70px; gap: 12px; padding: 0 12px; font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: .3px; }
+.yrow { display: grid; grid-template-columns: minmax(120px, 1.3fr) repeat(3, minmax(90px, 1fr)) minmax(80px, 1.2fr) 70px; gap: 12px; align-items: center; padding: 9px 12px; border-radius: 12px; }
+.yr-i, .yr-e, .yr-n { display: flex; justify-content: flex-end; }
+.yr-lb { display: none; }
+.yr-c { text-align: right; }
+.ys-s { display: none; }
+.yval { font-size: 10px; font-weight: 700; color: #334155; white-space: nowrap; }
+.y-empty { padding: 28px 0; text-align: center; color: #5B6577; font-size: 14px; }
+.y-btn { font: inherit; min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid #E2E8F0; background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; color: #0F172A; }
+.y-btn:hover { border-color: #CBD2DD; }
+@container (max-width: 760px) {
+  .yin { padding: 16px 14px 32px; }
+  .ykpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .y2 { grid-template-columns: 1fr; }
+  .ykv { font-size: 19px; }
+  .ystats, .yq { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .yhead, .yval, .ys-f { display: none; }
+  .ys-s { display: inline; }
+  .yrow { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "m m c" "i e n" "b b b"; row-gap: 8px; column-gap: 8px; padding: 12px; }
+  .yr-m { grid-area: m; } .yr-c { grid-area: c; } .yr-i { grid-area: i; } .yr-e { grid-area: e; } .yr-n { grid-area: n; } .yr-b { grid-area: b; }
+  .yr-i, .yr-e, .yr-n { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 1px; }
+  .yr-lb { display: block; font-size: 11px; color: #94A3B8; font-weight: 600; }
+}
+
+/* «Ներբեռնել PDF» → browser print dialog with only the summary (Save as PDF) */
+@media print {
+  body.y-open > *:not(#year-view) { display: none !important; }
+  body.y-open { overflow: visible; background: #fff; }
+  body.y-open .yv { position: static; overflow: visible; background: #fff; }
+  .y-noprint { display: none !important; }
+  .ycard, .yrow { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

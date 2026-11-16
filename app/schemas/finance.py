@@ -105,3 +105,30 @@ class TransactionIn(BaseModel):
 class CategoryIn(BaseModel):
     name: CategoryName
     type: TxType
+
+
+# ---------- GET /api/finance/year (yearly summary) ----------
+
+class YearMonth(BaseModel):
+    income: int  # done income of the month
+    expense: int  # done expense of the month (absolute value)
+    count: int  # done transactions
+
+
+class BrandTotal(BaseModel):
+    name: str  # deal brand, or the transaction title before " · "
+    amount: int
+    count: int
+
+
+class YearOut(BaseModel):
+    year: int
+    years: list[int]  # selectable years, oldest → newest
+    today: date
+    # 12 items; None = no done transactions that month (or the month is in the future)
+    months: list[YearMonth | None]
+    prev_months: list[YearMonth | None] | None  # the year before; None when it has no data at all
+    by_category: dict[TxType, list[CategoryShare]]  # whole year, biggest first
+    top_brands: list[BrandTotal]  # collaboration income by brand, top 5
+    collab_count: int  # collaboration income transactions
+    collab_avg: int | None  # average collaboration payment

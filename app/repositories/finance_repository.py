@@ -39,6 +39,12 @@ class FinanceRepository:
             )
         ) or Decimal("0")
 
+    def first_paid_date(self, user_id: int) -> date | None:
+        return self.db.scalar(
+            select(func.min(Transaction.occurred_at)).where(
+                Transaction.user_id == user_id, Transaction.status == "paid")
+        )
+
     def monthly_paid(self, user_id: int, start: date, end: date) -> list[tuple[int, int, str, Decimal]]:
         """(year, month, type, sum) for done transactions in the range."""
         year = extract("year", Transaction.occurred_at)

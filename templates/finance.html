@@ -34,9 +34,12 @@
       </div>
       <p class="month-label mob-only"></p>
     </div>
-    <button class="btn btn-primary desk-only" type="button" data-add aria-expanded="false" aria-controls="add-form">
-      <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.plus|safe }}</svg>Ավելացնել գործարք
-    </button>
+    <div class="fin-actions desk-only">
+      <button class="btn btn-year" type="button" data-year-open aria-haspopup="dialog"><svg viewBox="0 0 24 24" stroke-width="2.2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Տարեկան ամփոփում</button>
+      <button class="btn btn-primary" type="button" data-add aria-expanded="false" aria-controls="add-form">
+        <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.plus|safe }}</svg>Ավելացնել գործարք
+      </button>
+    </div>
     <div class="mob-only month-pop-wrap">
       <button class="sq-btn" type="button" id="month-pop-btn" aria-label="Ընտրել ամիսը" aria-expanded="false" aria-controls="month-pop">
         <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.cal|safe }}</svg>
@@ -116,6 +119,8 @@
       <p class="money-meta" id="exp-meta"></p>
     </div>
   </section>
+
+  <button class="btn-year-big mob-only" type="button" data-year-open aria-haspopup="dialog"><svg viewBox="0 0 24 24" stroke-width="2.2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Տարեկան ամփոփում ու վերլուծություն</button>
 
   <button class="btn btn-primary btn-add-big mob-only" type="button" data-add>
     <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.plus|safe }}</svg>Ավելացնել գործարք
@@ -230,9 +235,13 @@
 </div>
 
 <div class="fin-toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+{# Yearly summary: full-screen overlay, filled by static/js/finance-year.js #}
+<div class="yv" id="year-view" role="dialog" aria-modal="true" aria-label="Տարեկան ամփոփում" hidden></div>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="{{ asset('js/finance.js') }}"></script>
+<script src="{{ asset('js/finance-year.js') }}"></script>
 {% endblock %}

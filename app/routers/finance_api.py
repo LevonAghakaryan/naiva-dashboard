@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_finance_service
-from app.schemas.finance import CategoryIn, CategoryOut, FinancePageOut, MonthStr, TransactionIn, TransactionOut
+from app.schemas.finance import (
+    CategoryIn,
+    CategoryOut,
+    FinancePageOut,
+    MonthStr,
+    TransactionIn,
+    TransactionOut,
+    YearOut,
+)
 from app.services.finance_service import FinanceService
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -14,6 +22,15 @@ def page(
 ):
     """Everything the finance page shows for one month: cards, list, pending, calendar, charts."""
     return service.page(month)
+
+
+@router.get("/year", response_model=YearOut)
+def year_summary(
+    year: int | None = Query(None, ge=2000, le=2100, description="default = current year"),
+    service: FinanceService = Depends(get_finance_service),
+):
+    """Yearly summary: 12 months of done income / expense, the year before, categories, top brands."""
+    return service.year(year)
 
 
 # ---------- transactions ----------

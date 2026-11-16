@@ -25,6 +25,9 @@ from app.schemas.finance import (
     SummaryOut,
     TransactionIn,
     TransactionOut,
+    BrandTotal,
+    YearMonth,
+    YearOut,
 )
 
 MONTHS_SHORT = ["Հունվ", "Փետր", "Մարտ", "Ապր", "Մայիս", "Հունիս",
@@ -40,6 +43,8 @@ DEFAULT_CATEGORIES = [
 ]
 RENAMED = {"Ճամփորդություն": "Տրանսպորտ"}  # old shared default → new default
 CHART_MONTHS = 6
+COLLAB_CATEGORY = "Համագործակցություն"
+TOP_BRANDS = 5
 
 DB_STATUS = {"done": "paid", "pending": "pending"}
 API_STATUS = {v: k for k, v in DB_STATUS.items()}
@@ -208,6 +213,58 @@ class FinanceService:
                 expense=to_int(sums.get((m.year, m.month, "expense"), 0)),
             ))
         return items
+
+    # ---------- yearly summary ----------
+
+    def year(self, year: int | None) -> YearOut:
+        """Done transactions of one calendar year, month by month (pending ones never count)."""
+        first = self.repo.first_paid_date(self.user_id)
+        first_year = min(first.year, self.today.year) if first else self.today.year
+        years = list(range(first_year, self.today.year + 1))
+        year = year or self.today.year
+        if year not in years:
+            raise FinanceInvalid(f"{year} թվականի տվյալներ չկան")
+
+        txs = self.repo.month_transactions(self.user_id, date(year, 1, 1), date(year, 12, 31))
+        done = [t for t in txs if t.status == "paid"]
+        months = self._year_months(done)
+
+        prev_rows = self.repo.monthly_paid(self.user_id, date(year - 1, 1, 1), date(year - 1, 12, 31))
+        prev_months = None
+        if prev_rows:
+            sums = {(m, t): to_int(s) for _, m, t, s in prev_rows}
+            prev_months = [
+                YearMonth(income=sums.get((m, "income"), 0), expense=sums.get((m, "expense"), 0), count=0)
+                if (m, "income") in sums or (m, "expense") in sums else None
+                for m in range(1, 13)
+            ]
+
+        collab = [t for t in done if t.type == "income" and (t.deal_id or _category_name(t) == COLLAB_CATEGORY)]
+        brands: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        for t in collab:
+            name = t.deal.brand_name if t.deal else (t.description or COLLAB_CATEGORY).split(" · ")[0].strip()
+            brands[name][0] += to_int(t.amount)
+            brands[name][1] += 1
+        top = sorted(brands.items(), key=lambda kv: kv[1][0], reverse=True)[:TOP_BRANDS]
+        collab_total = sum(to_int(t.amount) for t in collab)
+
+        return YearOut(
+            year=year, years=years, today=self.today, months=months, prev_months=prev_months,
+            by_category={"income": self._shares(done, "income"), "expense": self._shares(done, "expense")},
+            top_brands=[BrandTotal(name=n, amount=a, count=c) for n, (a, c) in top],
+            collab_count=len(collab),
+            collab_avg=round(collab_total / len(collab)) if collab else None,
+        )
+
+    @staticmethod
+    def _year_months(done: list[Transaction]) -> list[YearMonth | None]:
+        acc: dict[int, list[int]] = defaultdict(lambda: [0, 0, 0])
+        for t in done:
+            row = acc[t.occurred_at.month]
+            row[0 if t.type == "income" else 1] += to_int(t.amount)
+            row[2] += 1
+        return [YearMonth(income=acc[m][0], expense=acc[m][1], count=acc[m][2]) if m in acc else None
+                for m in range(1, 13)]
 
     # ---------- transactions ----------
 
