@@ -213,16 +213,22 @@
   </div>
   <p class="sheet-q" id="sheet-q"></p>
   <div class="sheet-amount" id="sheet-amount" aria-live="polite">֏0</div>
-  <div class="tiles" id="sheet-cats"></div>
+  <button class="cat-field" type="button" id="sheet-cat-btn" data-sheet-cat aria-expanded="false" aria-controls="sheet-cats">
+    <span class="cat-dot" aria-hidden="true"></span>
+    <span class="cat-field-txt"><span class="cat-field-lbl">Կատեգորիա</span><span class="cat-field-val" id="sheet-cat-val"></span></span>
+    <svg class="cat-field-chev" viewBox="0 0 24 24" aria-hidden="true">{{ ico.down|safe }}</svg>
+  </button>
+  <div class="cat-list" id="sheet-cats" role="listbox" aria-label="Ընտրել կատեգորիա" hidden></div>
+  <div class="cat-new" id="sheet-cat-new" hidden></div>
   <div class="day-pick">
-    <div class="seg-small" role="group" aria-label="Օր">
+    <div class="sheet-opts" role="group" aria-label="Օր">
       <button type="button" data-day="today">Այսօր</button>
       <button type="button" data-day="yesterday">Երեկ</button>
       <button type="button" data-day="other" aria-expanded="false">Այլ օր <svg viewBox="0 0 24 24" aria-hidden="true">{{ ico.down|safe }}</svg></button>
     </div>
     <div class="mini-cal" hidden></div>
   </div>
-  <div class="seg-small" role="group" aria-label="Կարգավիճակ">
+  <div class="sheet-opts" role="group" aria-label="Կարգավիճակ">
     <button type="button" data-status="done">Կատարված</button>
     <button type="button" data-status="pending" class="is-pending">Սպասվող</button>
   </div>

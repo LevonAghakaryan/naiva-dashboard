@@ -472,7 +472,7 @@
 
   // ---------- add: shared state ----------
   function resetAdd() {
-    Object.assign(add, { type: "expense", day: "today", status: "done", digits: "", calOpen: false,
+    Object.assign(add, { type: "expense", day: "today", status: "done", digits: "", calOpen: false, catOpen: false,
       calMonth: monthOf(state.data.today), newCat: null, error: "", edit: null });
     add.cat = firstCat(add.type);
     $("#add-title").value = "";
@@ -561,7 +561,7 @@
       const amt = $("#sheet-amount");
       amt.textContent = fmt.amd(amountValue());
       amt.classList.toggle("is-empty", !add.digits);
-      renderTiles();
+      renderSheetCat();
       const what = (add.status === "pending" ? "սպասվող " : "") + (add.type === "income" ? "եկամուտ" : "ծախս");
       const btn = $("#sheet-submit");
       btn.textContent = `${editing ? "Պահպանել" : `Ավելացնել ${what}`}${add.digits ? ` · ${fmt.amd(amountValue())}` : ""}`;
@@ -585,13 +585,23 @@
     $("#add-cats").innerHTML = html;
   }
 
-  function renderTiles() {
-    let html = cats().filter((c) => c.type === add.type).map((c) =>
-      `<button type="button" class="tile${add.cat === c.id ? " is-on" : ""}" data-add-cat="${c.id}"
-        aria-pressed="${add.cat === c.id}">${esc(c.name)}</button>`).join("");
-    html += add.newCat ? `<div class="tile-form">${addNewCatForm()}</div>`
-      : '<button type="button" class="tile tile-add" data-add-new-cat>+ Նոր</button>';
-    $("#sheet-cats").innerHTML = html;
+  /** Mobile sheet: one category field that opens a list under it. */
+  function renderSheetCat() {
+    const list = cats().filter((c) => c.type === add.type);
+    const cur = list.find((c) => c.id === add.cat);
+    $("#sheet-cat-val").textContent = cur ? cur.name : "Ընտրիր կատեգորիան";
+    $("#sheet-cat-btn").classList.toggle("has-cat", !!cur);
+    $("#sheet-cat-btn").setAttribute("aria-expanded", String(!!add.catOpen));
+    const box = $("#sheet-cats");
+    box.hidden = !add.catOpen;
+    box.innerHTML = list.map((c) => {
+      const on = add.cat === c.id;
+      return `<button type="button" role="option" class="cat-opt${on ? " is-on" : ""}" data-add-cat="${c.id}"
+        aria-selected="${on}"><span>${esc(c.name)}</span>${on ? svg("check") : ""}</button>`;
+    }).join("") + '<button type="button" class="cat-opt-add" data-add-new-cat>+ Նոր կատեգորիա</button>';
+    const nc = $("#sheet-cat-new");
+    nc.hidden = !add.newCat;
+    nc.innerHTML = add.newCat ? addNewCatForm() : "";
   }
 
   function addNewCatForm() {
@@ -782,11 +792,12 @@
     // add form / sheet
     if (!add.open) return;
     if (d.addType) {
-      if (add.type !== d.addType) { add.type = d.addType; add.cat = firstCat(add.type); add.newCat = null; }
+      if (add.type !== d.addType) { add.type = d.addType; add.cat = firstCat(add.type); add.newCat = null; add.catOpen = false; }
       add.error = ""; renderAdd(); return;
     }
-    if (d.addCat) { add.cat = Number(d.addCat); renderAdd(); return; }
-    if ("addNewCat" in d) { add.newCat = { name: "", error: "" }; renderAdd(); $("[data-add-nc-form] input", add.mobile ? $("#sheet") : $("#add-form"))?.focus(); return; }
+    if ("sheetCat" in d) { add.catOpen = !add.catOpen; renderAdd(); return; }
+    if (d.addCat) { add.cat = Number(d.addCat); add.catOpen = false; renderAdd(); return; }
+    if ("addNewCat" in d) { add.newCat = { name: "", error: "" }; add.catOpen = false; renderAdd(); $("[data-add-nc-form] input", add.mobile ? $("#sheet") : $("#add-form"))?.focus(); return; }
     if ("addNcCancel" in d) { add.newCat = null; renderAdd(); return; }
     if ("addNcSave" in d) { await saveAddCategory(); return; }
     if (d.day) {

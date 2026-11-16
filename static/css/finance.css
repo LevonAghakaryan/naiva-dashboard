@@ -312,44 +312,84 @@ button.tx:hover { filter: brightness(.97); }
 /* ---------- mobile add sheet ---------- */
 .sheet {
   position: fixed; inset: 0; z-index: 70; overflow-y: auto; background: #FEF2F2;
-  display: flex; flex-direction: column; gap: 14px; padding: 12px 16px 20px;
+  display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 16px;
 }
 .sheet.is-income { background: #ECFDF5; }
 .sheet[hidden] { display: none; }
 body.sheet-open { overflow: hidden; }
-.sheet-top { display: flex; align-items: center; gap: 12px; }
-.sheet-top .seg-type { flex: 1; background: rgba(255, 255, 255, .7); }
-.sheet-q { margin: 6px 0 0; text-align: center; color: var(--muted); font-weight: 500; }
-.sheet-q.is-error { color: #B42318; font-weight: 600; }
-.sheet-amount { text-align: center; font-size: 48px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }
-.sheet-amount.is-empty { color: #94A3B8; }
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.tile {
-  min-height: 48px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 12px; background: #fff;
-  font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; line-height: 1.2;
-  overflow: hidden; text-overflow: ellipsis;
+.sheet-top { display: flex; align-items: center; gap: 10px; }
+.sheet-top .sq-btn { width: 44px; height: 44px; border-radius: 14px; border: 0; background: #fff; color: #334155; box-shadow: 0 1px 2px rgba(15, 23, 42, .08); flex: none; }
+.sheet-top .seg-type { flex: 1; background: rgba(255, 255, 255, .7); border-radius: 14px; }
+.sheet-top .seg-type button { min-height: 40px; }
+.sheet .seg-type [data-add-type][aria-pressed="true"] { background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .08); }
+.sheet .seg-type [data-add-type="income"][aria-pressed="true"] { color: #047857; }
+.sheet .seg-type [data-add-type="expense"][aria-pressed="true"] { color: #B42318; }
+.sheet-q { margin: 4px 0 0; text-align: center; color: #5B6577; font-size: 14px; font-weight: 600; }
+.sheet-q.is-error { color: #B42318; }
+.sheet-amount { margin-top: -6px; text-align: center; font-size: 48px; font-weight: 700; letter-spacing: -1.5px; line-height: 1.1; color: #B42318; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sheet.is-income .sheet-amount { color: #047857; }
+.sheet .sheet-amount.is-empty { color: #94A3B8; }
+
+/* category: one field + list under it */
+.cat-field {
+  min-height: 52px; border-radius: 14px; border: 1px solid rgba(15, 23, 42, .08); background: #fff; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; text-align: left; font: inherit;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05); flex: none;
 }
-.sheet .tile.is-on { background: #B42318; border-color: #B42318; color: #fff; }
-.sheet.is-income .tile.is-on { background: #047857; border-color: #047857; }
-.tile-add { border-style: dashed; color: var(--accent); background: transparent; }
-.tile-form { grid-column: 1 / -1; }
-.tile-form .nc-form input { flex: 1; width: auto; min-height: 44px; }
-.tile-form .nc-form .btn-sm, .tile-form .nc-form .icon-btn { min-height: 44px; height: 44px; }
-.sheet .seg-small { background: rgba(255, 255, 255, .7); }
-.sheet .seg-small button { min-height: 40px; }
-.sheet .mini-cal { max-width: none; }
+.cat-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: #CBD5E1; }
+.cat-field.has-cat .cat-dot { background: #EF4444; }
+.sheet.is-income .cat-field.has-cat .cat-dot { background: #16A34A; }
+.cat-field-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cat-field-lbl { font-size: 11px; font-weight: 600; color: #5B6577; }
+.cat-field-val { font-size: 15px; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-field-chev { width: 18px; height: 18px; flex: none; fill: none; stroke: #64748B; stroke-width: 2.4; transition: transform .2s; }
+.cat-field[aria-expanded="true"] .cat-field-chev { transform: rotate(180deg); }
+.cat-list {
+  margin-top: -4px; background: #fff; border: 1px solid rgba(15, 23, 42, .08); border-radius: 14px; padding: 6px;
+  display: flex; flex-direction: column; gap: 2px; box-shadow: 0 10px 24px rgba(15, 23, 42, .10); flex: none;
+}
+.cat-list[hidden], .cat-new[hidden] { display: none; }
+.cat-opt {
+  font: inherit; font-size: 14px; font-weight: 500; min-height: 44px; border-radius: 10px; cursor: pointer; padding: 0 12px;
+  display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; color: #0F172A;
+}
+.cat-opt span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-opt svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.6; }
+.cat-opt.is-on { font-weight: 700; background: #FEF2F2; color: #B42318; }
+.sheet.is-income .cat-opt.is-on { background: #ECFDF5; color: #047857; }
+.cat-opt-add {
+  font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; border-radius: 10px; cursor: pointer;
+  background: transparent; color: #1D4ED8; border: 0; text-align: left; padding: 0 12px;
+}
+.cat-new .nc-form input { flex: 1; width: auto; min-width: 0; min-height: 46px; }
+.cat-new .nc-form .btn-sm, .cat-new .nc-form .icon-btn { min-height: 46px; height: 46px; }
+
+/* day + status: separate chips */
+.sheet .day-pick { display: flex; flex-direction: column; gap: 10px; align-items: stretch; flex: none; }
+.sheet-opts { display: flex; gap: 8px; }
+.sheet-opts button {
+  font: inherit; flex: 1; font-size: 14px; font-weight: 600; min-height: 44px; border-radius: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: #fff; color: #334155; border: 1px solid rgba(15, 23, 42, .1); white-space: nowrap;
+}
+.sheet-opts button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; }
+.sheet-opts button[aria-pressed="true"] { background: #0F172A; color: #fff; border-color: #0F172A; }
+.sheet-opts .is-pending[aria-pressed="true"] { background: #FEF3C7; color: #92400E; border: 1.5px solid #F59E0B; }
+.sheet .mini-cal { max-width: none; background: #fff; border: 1px solid rgba(15, 23, 42, .1); border-radius: 14px; padding: 10px; }
 .sheet-note {
-  min-height: 44px; border: 1px solid var(--border); border-radius: 12px; padding: 0 14px; background: #fff;
-  font: inherit; font-size: 16px; color: var(--text);
+  min-height: 46px; border: 1px solid rgba(15, 23, 42, .12); border-radius: 12px; padding: 10px 12px; background: #fff;
+  font: inherit; font-size: 16px; color: var(--text); box-sizing: border-box; flex: none;
 }
-.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; }
+.sheet-note:focus { outline: 2px solid #2563EB; outline-offset: 1px; border-color: #2563EB; }
+.keypad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; flex: none; }
 .keypad button {
-  min-height: 52px; border: 0; border-radius: 12px; background: #fff; font: inherit; font-size: 22px; font-weight: 600;
-  color: var(--text); cursor: pointer; display: grid; place-items: center; box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+  min-height: 42px; border: 0; border-radius: 12px; background: #fff; font: inherit; font-size: 19px; font-weight: 600;
+  color: #0F172A; cursor: pointer; display: grid; place-items: center; box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
 }
+.keypad button svg { width: 20px; height: 20px; }
 .keypad button:active { background: #E2E8F0; }
 .sheet-submit {
-  min-height: 56px; border: 0; border-radius: 14px; background: #B42318; color: #fff; font: inherit; font-size: 16px;
+  min-height: 50px; border: 0; border-radius: 16px; background: #B42318; color: #fff; font: inherit; font-size: 16px;
   font-weight: 700; cursor: pointer; flex: none;
 }
 .sheet.is-income .sheet-submit { background: #047857; }
