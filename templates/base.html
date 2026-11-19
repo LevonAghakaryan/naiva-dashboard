@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Armenian:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="{{ asset('js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ asset('css/theme.css') }}">
   <link rel="stylesheet" href="{{ asset('css/main.css') }}">
   {% block head %}{% endblock %}
 </head>
@@ -25,6 +27,7 @@
       <span class="logo-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span>
       <span class="logo-text">{{ app_name }}</span>
     </a>
+    <button type="button" class="th-round th-tablet" data-theme-toggle aria-label="Միացնել մուգ ռեժիմը">☾</button>
 
     <nav class="nav" aria-label="Բաժիններ">
       {% for key, label, href, icon in nav %}
@@ -44,6 +47,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         <span>Կարգավորումներ</span>
       </span>
+      <div class="th-seg" role="group" aria-label="Թեմա">
+        <button type="button" data-theme-set="light" aria-pressed="true"><span aria-hidden="true">☀</span> Բաց</button>
+        <button type="button" data-theme-set="dark" aria-pressed="false"><span aria-hidden="true">☾</span> Մուգ</button>
+      </div>
 
       {% if account %}
       <div class="user-card">
@@ -59,6 +66,13 @@
   </aside>
 
   <main class="content">
+    <div class="m-top">
+      <a class="logo" href="/home">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span>
+        <span class="logo-text">{{ app_name }}</span>
+      </a>
+      <button type="button" class="th-round" data-theme-toggle aria-label="Միացնել մուգ ռեժիմը">☾</button>
+    </div>
     {% block content %}{% endblock %}
   </main>
 </div>

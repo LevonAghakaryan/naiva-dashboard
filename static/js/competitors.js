@@ -26,12 +26,12 @@
 
   const one = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "");
   const METRICS = [
-    { id: "followers", name: "Followers", short: "Followers", icon: "users", t: "#EEF4FF", tc: "#2563EB", f: (v) => fmt.compact(v) },
-    { id: "er", name: "Engagement rate", short: "ER", icon: "pulse", t: "#FDF2F8", tc: "#DB2777", f: (v) => one(v) + "%" },
-    { id: "posts", name: "Posts", note: "շաբաթական", short: "Posts", icon: "cal", t: "#FFF7ED", tc: "#EA580C", f: (v) => one(v) },
-    { id: "likes", name: "Likes", note: "միջին", short: "Likes", icon: "heart", t: "#FFF1F2", tc: "#E11D48", f: (v) => fmt.compact(v) },
-    { id: "comments", name: "Comments", note: "միջին", short: "Comments", icon: "comment", t: "#F5F3FF", tc: "#7C3AED", f: (v) => fmt.compact(v) },
-    { id: "views", name: "Views", note: "միջին", short: "Views", icon: "eye", t: "#ECFEFF", tc: "#0891B2", f: (v) => fmt.compact(v) },
+    { id: "followers", name: "Followers", short: "Followers", icon: "users", t: "var(--c-eef4ff)", tc: "#2563EB", f: (v) => fmt.compact(v) },
+    { id: "er", name: "Engagement rate", short: "ER", icon: "pulse", t: "var(--c-fdf2f8)", tc: "#DB2777", f: (v) => one(v) + "%" },
+    { id: "posts", name: "Posts", note: "շաբաթական", short: "Posts", icon: "cal", t: "var(--c-fff7ed)", tc: "#EA580C", f: (v) => one(v) },
+    { id: "likes", name: "Likes", note: "միջին", short: "Likes", icon: "heart", t: "var(--c-fff1f2)", tc: "#E11D48", f: (v) => fmt.compact(v) },
+    { id: "comments", name: "Comments", note: "միջին", short: "Comments", icon: "comment", t: "var(--c-f5f3ff)", tc: "#7C3AED", f: (v) => fmt.compact(v) },
+    { id: "views", name: "Views", note: "միջին", short: "Views", icon: "eye", t: "var(--c-ecfeff)", tc: "#0891B2", f: (v) => fmt.compact(v) },
   ];
   const TYPES = { reels: "Reels", carousel: "Carousel", post: "Post" };
   const SORTS = [["likes", "Likes"], ["comments", "Comments"], ["views", "Views"], ["er", "ER"], ["recent", "Վերջինը"]];

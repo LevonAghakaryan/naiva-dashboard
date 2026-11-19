@@ -15,7 +15,7 @@
   ];
   const FOLLOWER_KEYS = ["followers", "new_follows", "unfollows"];
   const LINE_COLORS = { new_follows: "#059669", follows: "#059669", unfollows: "#DC2626", er: "#DB2777" };
-  const HEAT = ["#EEF2FF", "#C9D7FF", "#9DB8FC", "#6593F7", "#2F6BF0"];
+  const HEAT = ["var(--c-eef2ff)", "var(--c-c9d7ff)", "#9DB8FC", "#6593F7", "#2F6BF0"];
 
   const I = {
     heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -367,7 +367,7 @@
       const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
       if (left < prevRight + 8) return "";
       prevRight = left + w;
-      return `<text x="${x.toFixed(1)}" y="${y}" text-anchor="${anchor}" fill="#64748B" font-size="11">${text}</text>`;
+      return `<text x="${x.toFixed(1)}" y="${y}" text-anchor="${anchor}" fill="var(--c-64748b)" font-size="11">${text}</text>`;
     }).join("");
   }
 
@@ -403,8 +403,8 @@
     const grid = sc.ticks.map((v, k) => {
       const y = Y(v).toFixed(1);
       const solid = k === 0;
-      return `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="${solid ? "#CBD5E1" : "#E5E9F0"}" stroke-width="1" ${solid ? "" : 'stroke-dasharray="3 4"'}/>
-        <text x="${padL - 8}" y="${y}" dy="0.32em" text-anchor="end" fill="#64748B" font-size="11">${labels[k]}</text>`;
+      return `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="${solid ? "#CBD5E1" : "var(--c-e5e9f0)"}" stroke-width="1" ${solid ? "" : 'stroke-dasharray="3 4"'}/>
+        <text x="${padL - 8}" y="${y}" dy="0.32em" text-anchor="end" fill="var(--c-64748b)" font-size="11">${labels[k]}</text>`;
     }).join("");
     const xIdx = bare ? [] : xLabelIndexes(n, m.gran, plotW);
     const xl = xAxisText(xIdx.map((i, k) => ({
@@ -427,9 +427,9 @@
           ${prevPath}
           <path d="${line}" stroke="${color}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
           <line class="hover-line" x1="0" x2="0" y1="${padT}" y2="${bottom}" stroke="#94A3B8" stroke-dasharray="3 3" visibility="hidden"/>
-          ${bare ? "" : `<circle cx="${P[maxI].x}" cy="${P[maxI].y}" r="5" fill="${color}" stroke="#fff" stroke-width="2"/>`}
-          ${bare || maxI !== n - 1 ? `<circle cx="${P[n - 1].x}" cy="${P[n - 1].y}" r="4" fill="#fff" stroke="${color}" stroke-width="2.25"/>` : ""}
-          <circle class="hover-dot" r="5.5" fill="#fff" stroke="${color}" stroke-width="2.5" visibility="hidden" style="filter:drop-shadow(0 1px 3px rgba(15,23,42,.3))"/>
+          ${bare ? "" : `<circle cx="${P[maxI].x}" cy="${P[maxI].y}" r="5" fill="${color}" stroke="var(--c-ffffff)" stroke-width="2"/>`}
+          ${bare || maxI !== n - 1 ? `<circle cx="${P[n - 1].x}" cy="${P[n - 1].y}" r="4" fill="var(--c-ffffff)" stroke="${color}" stroke-width="2.25"/>` : ""}
+          <circle class="hover-dot" r="5.5" fill="var(--c-ffffff)" stroke="${color}" stroke-width="2.5" visibility="hidden" style="filter:drop-shadow(0 1px 3px rgba(15,23,42,.3))"/>
         </svg>
         <span class="max-tag" ${bare ? "hidden" : ""} style="background:${color};left:${Math.min(W - 40, Math.max(padL + 30, P[maxI].x))}px;top:${P[maxI].y - 9}px">Max ${unit === "pct" ? pct(pts[maxI]) : axisLabel(pts[maxI], unit)}</span>
         <div class="zones"></div>
@@ -633,7 +633,7 @@
       { x: W, text: dm(buckets[n - 1].start), anchor: "end" },
     ], H - 4);
     const aria = `${$("#daily-title").textContent}, վերջին ${data.days} օր։ Ընդհանուրը՝ ${metricText(m)}։ ${$("#daily-max").textContent}`;
-    const defs = `<defs><linearGradient id="rb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A5C4FF"/><stop offset="1" stop-color="#C7DAFF"/></linearGradient><linearGradient id="rb-max" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F8BFF"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>`;
+    const defs = `<defs><linearGradient id="rb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A5C4FF"/><stop offset="1" stop-color="var(--c-c7daff)"/></linearGradient><linearGradient id="rb-max" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F8BFF"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>`;
     host.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">${defs}${s}</svg>`;
   }
 

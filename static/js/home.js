@@ -99,9 +99,9 @@
   }
 
   function renderTodos() {
-    const RED = ["#FEF2F2", "#FECACA", "#B42318", "#FEE2E2"];
-    const BLUE = ["#EEF4FF", "#DBE6FB", "#1D4ED8", "#DBEAFE"];
-    const AMBER = ["#FFFBEB", "#FDE68A", "#B45309", "#FEF3C7"];
+    const RED = ["var(--c-fef2f2)", "var(--c-fecaca)", "#B42318", "var(--c-fee2e2)"];
+    const BLUE = ["var(--c-eef4ff)", "var(--c-dbe6fb)", "#1D4ED8", "var(--c-dbeafe)"];
+    const AMBER = ["var(--c-fffbeb)", "#FDE68A", "#B45309", "var(--c-fef3c7)"];
     const todos = [
       // Inbox isn't built yet: sample task, not a link.
       { title: "4 համագործակցության առաջարկ սպասում է", sub: "2-ը՝ ավելի քան 2 օր", cta: "Պատասխանել", href: null, icon: ICON.msg, c: RED },
@@ -135,10 +135,10 @@
     const fPct = f.delta !== null && f.previous ? (f.delta / f.previous) * 100 : null;
     const incDelta = inc.previous > 0 ? ((inc.value - inc.previous) / inc.previous) * 100 : null;
     const K = [
-      { label: "Followers", full: fmt.full(f.value), short: fmt.compact(f.value), d: fPct, prev: f.previous, prevFmt: fmt.compact, ser: f.points, sum: false, col: "#2563EB", tint: "#EEF4FF" },
-      { label: "Reach", full: fmt.compact(r.value), short: fmt.compact(r.value), d: r.delta, prev: r.previous, prevFmt: fmt.compact, ser: r.points, sum: true, col: "#0E7490", tint: "#ECFEFF" },
-      { label: "Engagement", full: fmt.percent(e.value), short: fmt.percent(e.value), d: e.delta, prev: e.previous, prevFmt: fmt.percent, ser: e.points, sum: false, col: "#DB2777", tint: "#FDF2F8" },
-      { label: "Եկամուտ", full: fmt.amd(inc.value), short: fmt.amdShort(inc.value), d: incDelta, prev: inc.previous, prevFmt: fmt.amdShort, ser: inc.points, sum: true, col: "#6D28D9", tint: "#F3F0FF" },
+      { label: "Followers", full: fmt.full(f.value), short: fmt.compact(f.value), d: fPct, prev: f.previous, prevFmt: fmt.compact, ser: f.points, sum: false, col: "#2563EB", tint: "var(--c-eef4ff)" },
+      { label: "Reach", full: fmt.compact(r.value), short: fmt.compact(r.value), d: r.delta, prev: r.previous, prevFmt: fmt.compact, ser: r.points, sum: true, col: "#0E7490", tint: "var(--c-ecfeff)" },
+      { label: "Engagement", full: fmt.percent(e.value), short: fmt.percent(e.value), d: e.delta, prev: e.previous, prevFmt: fmt.percent, ser: e.points, sum: false, col: "#DB2777", tint: "var(--c-fdf2f8)" },
+      { label: "Եկամուտ", full: fmt.amd(inc.value), short: fmt.amdShort(inc.value), d: incDelta, prev: inc.previous, prevFmt: fmt.amdShort, ser: inc.points, sum: true, col: "#6D28D9", tint: "var(--c-f3f0ff)" },
     ];
     $("#kpis").innerHTML = K.map((k) => {
       const p = deltaPill(k.d), sp = spark(thin(k.ser, k.sum), 72, 26, 3);
@@ -188,7 +188,7 @@
 
   function renderFinance() {
     const F = data.finance;
-    const rows = [["Եկամուտ", F.income, "#047857", "#F0FDF4", "#BBF7D0"], ["Ծախս", F.expense, "#0F172A", "#F8FAFC", "#E2E8F0"], ["Սպասվող", F.pending_income, "#B45309", "#FFFBEB", "#FDE68A"]];
+    const rows = [["Եկամուտ", F.income, "#047857", "var(--c-f0fdf4)", "#BBF7D0"], ["Ծախս", F.expense, "var(--c-0f172a)", "var(--c-f8fafc)", "var(--c-e2e8f0)"], ["Սպասվող", F.pending_income, "#B45309", "var(--c-fffbeb)", "#FDE68A"]];
     $("#fin").innerHTML = rows.map(([l, v, c, bg, bd]) =>
       `<div style="background:${bg};border-color:${bd}"><span class="l">${l}</span><span class="v" style="color:${c}" title="${fmt.amd(v)}">${fmt.amdShort(v)}</span></div>`).join("");
     const tot = F.income + F.expense + F.pending_income;
@@ -218,14 +218,14 @@
 
     const cols = asc.map((c) => {
       const me = c.is_me, top = top3.has(c);
-      const vSt = `font-weight:${me || top ? 700 : 500};color:${me ? "#1D4ED8" : top ? "#334155" : "#94A3B8"}`;
+      const vSt = `font-weight:${me || top ? 700 : 500};color:${me ? "#1D4ED8" : top ? "var(--c-334155)" : "#94A3B8"}`;
       const bar = `height:calc((100% - 18px) * ${(c.followers / mx).toFixed(3)});background:` +
         (me ? "linear-gradient(180deg,#3B82F6,#93C5FD);box-shadow:0 6px 14px rgba(37,99,235,.25)" : top ? `linear-gradient(180deg,${c.color},${c.color}88)` : `${c.color}33`);
       return `<span class="c-col"><span class="c-val" style="${vSt}">${fmt.compact(c.followers)}</span><span class="c-bar" style="${bar}"></span></span>`;
     }).join("");
     const inis = asc.map((c) => {
       const me = c.is_me, top = top3.has(c);
-      const st = `font-size:${me ? 7 : 9}px;` + (me ? "background:#2563EB;color:#fff" : top ? `background:${c.color};color:#fff` : `background:${c.color}33;color:#334155`);
+      const st = `font-size:${me ? 7 : 9}px;` + (me ? "background:#2563EB;color:#fff" : top ? `background:${c.color};color:#fff` : `background:${c.color}33;color:var(--c-334155)`);
       const ini = me ? "Դու" : c.handle.replace(/^[^a-zA-Z0-9]+/, "").charAt(0).toUpperCase();
       return `<span title="${esc(name(c) + " · " + fmt.compact(c.followers))}"><span class="c-ini" style="${st}">${esc(ini)}</span></span>`;
     }).join("");

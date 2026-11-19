@@ -373,7 +373,7 @@
       const { ctx } = chart;
       ctx.save();
       ctx.font = "600 11px Inter, sans-serif";
-      ctx.fillStyle = "#0F172A";
+      ctx.fillStyle = "var(--c-0f172a)";
       ctx.textAlign = "center";
       ctx.fillText(fmt.amdShort(v), bar.x, bar.y - 6);
       ctx.restore();
@@ -394,9 +394,9 @@
     const m = state.data.monthly;
     const labels = m.map((x) => x.label);
     if (window.Chart) {
-      const grid = { color: "#EEF1F5", drawTicks: false };
-      const yTicks = { color: "#5B6577", font: { size: 11 }, padding: 6, maxTicksLimit: 4, callback: (v) => fmt.amdShort(v) };
-      const xAxis = { grid: { display: false }, border: { display: false }, ticks: { color: "#5B6577", font: { size: 11 } } };
+      const grid = { color: "var(--c-eef1f5)", drawTicks: false };
+      const yTicks = { color: "var(--c-5b6577)", font: { size: 11 }, padding: 6, maxTicksLimit: 4, callback: (v) => fmt.amdShort(v) };
+      const xAxis = { grid: { display: false }, border: { display: false }, ticks: { color: "var(--c-5b6577)", font: { size: 11 } } };
       const barData = {
         labels,
         datasets: [
