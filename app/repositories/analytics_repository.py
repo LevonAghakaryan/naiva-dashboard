@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -37,8 +37,10 @@ class AnalyticsRepository:
     # ---------- account ----------
 
     def get_current_account(self) -> IgAccount | None:
-        """Until auth exists, the "current" account is the first one in the DB."""
-        return self.db.scalar(select(IgAccount).order_by(IgAccount.id).limit(1))
+        """Until auth exists: the newest really connected account, else the demo one (seed.py)."""
+        is_demo = IgAccount.ig_user_id.like("demo_%")
+        return self.db.scalar(
+            select(IgAccount).order_by(case((is_demo, 1), else_=0), IgAccount.id.desc()).limit(1))
 
     # ---------- account_daily_stats ----------
 

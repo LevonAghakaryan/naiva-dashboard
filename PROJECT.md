@@ -335,7 +335,8 @@ Instagram API-ին իրական միացումը (`instagram_client.py`) կան�
 - [x] GitHub repo՝ https://github.com/LevonAghakaryan/naiva-dashboard (branch `main`)
 - [ ] Ստեղծել Meta Developer app և պատրաստվել App Review-ին
 - [ ] Ընտրել վերջնական անունը և դոմենը
-- [ ] Auth + Instagram միացում + գիշերային sync
+- [ ] Auth (login/գրանցում) — մինչ այդ `/auth/instagram/*`-ը աշխատում է «տեղական տիրոջ» համար, public deploy-ից առաջ պարտադիր
+- [x] Instagram միացում (OAuth, Instagram Login) + sync — կոդը պատրաստ է (2026-11-20). `instagram_graph.py`, `instagram_service.py`, `instagram_repository.py`, `instagram_api.py`, `scripts/sync_instagram.py` (գիշերային), թեստեր՝ `tests/` (`pytest`)։ Մնում է Meta app-ը և `.env`-ի `INSTAGRAM_APP_ID/SECRET`-ը
 
 ## 13. Ինչպես աշխատել Claude-ի հետ
 - Մեկ հաղորդագրություն = մեկ պարզ առաջադրանք

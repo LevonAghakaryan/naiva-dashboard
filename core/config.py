@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     instagram_sync: bool = False
     graph_api_version: str = "v24.0"
 
+    # Instagram API with Instagram Login (own account: OAuth, insights, nightly sync).
+    # Values from developers.facebook.com → App → Instagram → API setup with Instagram login.
+    # The connect button is hidden until both id and secret are set.
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    instagram_redirect_uri: str = "http://localhost:8000/auth/instagram/callback"
+    instagram_backfill_days: int = 30  # first sync after connecting (API keeps ~90 days)
+    instagram_resync_days: int = 3  # nightly sync re-reads the last N days (late-arriving data)
+    instagram_media_limit: int = 50  # newest posts whose insights are refreshed each sync
+
+    @property
+    def instagram_configured(self) -> bool:
+        return bool(self.instagram_app_id and self.instagram_app_secret)
+
     @property
     def sqlalchemy_url(self) -> str:
         if self.database_url:

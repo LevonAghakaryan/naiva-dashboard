@@ -14,6 +14,14 @@
       <p class="ig-sub" id="sync-info">{% if account %}@{{ account.username }}{% endif %}</p>
     </div>
     <div class="ig-actions">
+      {% if ig_connected %}
+      <button class="btn" id="ig-sync-btn" type="button" aria-label="Թարմացնել Instagram-ի տվյալները">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"/></svg>
+        <span class="export-text">Թարմացնել</span>
+      </button>
+      {% elif ig_configured %}
+      <a class="btn btn-primary" id="ig-connect-btn" href="/auth/instagram/login">Միացնել Instagram</a>
+      {% endif %}
       <div class="seg" role="group" aria-label="Ժամանակահատված" id="period">
         <button type="button" data-days="7" aria-pressed="false">7 օր</button>
         <button type="button" data-days="30" aria-pressed="true">30 օր</button>
@@ -35,6 +43,7 @@
     </button>
   </div>
 
+  <div id="ig-notice" class="ig-notice" role="status" hidden></div>
   <div id="page-error" class="alert" hidden></div>
 
   <!-- ===================== Overview ===================== -->

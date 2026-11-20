@@ -27,6 +27,8 @@ def _page_context(account: IgAccount | None, active: str) -> dict:
         "active": active,
         "account": account,
         "user_name": account.user.name if account else None,
+        "ig_configured": settings.instagram_configured,
+        "ig_connected": account is not None and not account.ig_user_id.startswith("demo_"),
     }
 
 

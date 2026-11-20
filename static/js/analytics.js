@@ -849,6 +849,48 @@
     }, 120);
   });
 
+  // ---------- Instagram connect / sync ----------
+  const IG_MESSAGES = {
+    connected: "Instagram-ը միացված է ✓ Տվյալները բեռնվում են ֆոնում (1–2 րոպե), հետո թարմացրեք էջը։",
+    denied: "Միացումը չեղարկվեց Instagram-ում։",
+    state: "Անվտանգության ստուգումը չանցավ կամ ժամկետն անցավ։ Փորձեք նորից։",
+    not_professional: "Հաշիվը Professional (Creator կամ Business) չէ։ Փոխեք Instagram-ի կարգավորումներում և փորձեք նորից։",
+    error: "Instagram-ի հետ միանալ չհաջողվեց։ Փորձեք նորից։",
+  };
+  function showNotice(text, ok) {
+    const box = $("#ig-notice");
+    box.textContent = text;
+    box.classList.toggle("is-ok", !!ok);
+    box.hidden = false;
+  }
+  const igParam = new URLSearchParams(location.search).get("ig");
+  if (igParam && IG_MESSAGES[igParam]) {
+    showNotice(IG_MESSAGES[igParam], igParam === "connected");
+    history.replaceState(null, "", location.pathname);
+  }
+  const syncBtn = $("#ig-sync-btn");
+  if (syncBtn) {
+    syncBtn.addEventListener("click", async () => {
+      syncBtn.disabled = true;
+      showNotice("Բեռնում եմ Instagram-ից…", true);
+      try {
+        const res = await fetch("/api/instagram/sync", { method: "POST" });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.detail || `Սխալ (${res.status})`);
+        showNotice(body.warnings && body.warnings.length
+          ? `Թարմացված է, բայց որոշ տվյալներ հասանելի չեն. ${body.warnings.join(" · ")}`
+          : "Թարմացված է ✓", true);
+        monthCache.clear();
+        loadPage();
+        loadMonth();
+      } catch (e) {
+        showNotice(e.message || String(e), false);
+      } finally {
+        syncBtn.disabled = false;
+      }
+    });
+  }
+
   // ---------- start ----------
   lastW = $("#ig").clientWidth;
   loadPage();
