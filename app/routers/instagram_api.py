@@ -1,6 +1,6 @@
 """Connect Instagram (OAuth) + manual sync.
 
-  GET  /auth/instagram/login     → redirect to instagram.com (state in an httpOnly cookie)
+  GET  /auth/instagram/login     → redirect to facebook.com, Unified login (state in an httpOnly cookie)
   GET  /auth/instagram/callback  → verify state, store the token, start the first sync in background
   GET  /api/instagram/status     → is the app configured, which account is connected, last sync
   POST /api/instagram/sync       → sync the current account now
@@ -22,7 +22,7 @@ from app.integrations.instagram_graph import InstagramAuthError, InstagramClient
 from app.models import IgAccount
 from app.repositories.instagram_repository import DEMO_PREFIX, InstagramRepository
 from app.services.instagram_service import (
-    InstagramNotProfessional,
+    InstagramNoAccount,
     InstagramService,
     SyncBusy,
 )
@@ -39,7 +39,7 @@ DONE_URL = "/analytics"
 
 def _require_configured() -> None:
     if not settings.instagram_configured:
-        raise HTTPException(status_code=503, detail="Instagram-ը կարգավորված չէ (.env → INSTAGRAM_APP_ID / SECRET)")
+        raise HTTPException(status_code=503, detail="Instagram-ը կարգավորված չէ (.env → META_APP_ID / SECRET / CONFIG_ID)")
 
 
 def _back(status: str) -> RedirectResponse:
@@ -86,13 +86,14 @@ def callback(request: Request, background: BackgroundTasks, db: Session = Depend
     if not code:
         return _back("error")
     try:
-        account = InstagramService(InstagramRepository(db)).connect(code)
-    except InstagramNotProfessional:
-        return _back("not_professional")
+        accounts = InstagramService(InstagramRepository(db)).connect(code)
+    except InstagramNoAccount:
+        return _back("no_account")
     except InstagramError as e:
         log.warning("instagram connect failed: %s", e)
         return _back("error")
-    background.add_task(sync_in_background, account.id)
+    for account in accounts:
+        background.add_task(sync_in_background, account.id)
     return _back("connected")
 
 

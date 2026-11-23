@@ -32,13 +32,17 @@ class Settings(BaseSettings):
     # Instagram Graph API (Business Discovery for competitors). Off until Meta App Review:
     # with it off, a new competitor is saved by username only and filled by the nightly sync later.
     instagram_sync: bool = False
-    graph_api_version: str = "v24.0"
+    graph_api_version: str = "v27.0"
 
-    # Instagram API with Instagram Login (own account: OAuth, insights, nightly sync).
-    # Values from developers.facebook.com → App → Instagram → API setup with Instagram login.
-    # The connect button is hidden until both id and secret are set.
-    instagram_app_id: str = ""
-    instagram_app_secret: str = ""
+    # Instagram API with Unified login (own account: OAuth, insights, nightly sync).
+    # App ID / Secret: developers.facebook.com → App settings → Basic. Config ID: API setup with
+    # Unified login. The connect button is hidden until all three are set.
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+    meta_config_id: str = ""
+    # Local testing without OAuth (scripts/instagram_local.py): a token generated in the dashboard.
+    instagram_account_id: str = ""
+    instagram_access_token: str = ""
     instagram_redirect_uri: str = "http://localhost:8000/auth/instagram/callback"
     instagram_backfill_days: int = 30  # first sync after connecting (API keeps ~90 days)
     instagram_resync_days: int = 3  # nightly sync re-reads the last N days (late-arriving data)
@@ -46,7 +50,7 @@ class Settings(BaseSettings):
 
     @property
     def instagram_configured(self) -> bool:
-        return bool(self.instagram_app_id and self.instagram_app_secret)
+        return bool(self.meta_app_id and self.meta_app_secret and self.meta_config_id)
 
     @property
     def sqlalchemy_url(self) -> str:

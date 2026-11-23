@@ -16,10 +16,10 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.integrations.instagram_graph import (
-    PROFESSIONAL_TYPES,
     InstagramAuthError,
     InstagramClient,
     InstagramError,
+    InstagramPermissionError,
     InstagramRateLimit,
     InstagramUnsupported,
     Media,
@@ -35,7 +35,7 @@ from core.config import settings
 log = logging.getLogger(__name__)
 
 DEFAULT_TZ = "Asia/Yerevan"
-REFRESH_BEFORE = timedelta(days=10)  # refresh the 60-day token when fewer days are left
+EXPIRY_WARNING = timedelta(days=10)  # tell the user to reconnect when fewer days are left
 PERIODS = (7, 30)  # the API allows ranges up to 30 days; 90 falls back to the daily sum
 
 # Account insights (metric_type=total_value) → account_daily_stats column
@@ -63,8 +63,8 @@ class InstagramNotConfigured(Exception):
     pass
 
 
-class InstagramNotProfessional(Exception):
-    pass
+class InstagramNoAccount(Exception):
+    """The user finished the login but shared no (professional) Instagram account."""
 
 
 class SyncBusy(Exception):
@@ -91,7 +91,7 @@ def _lock_for(account_id: int) -> threading.Lock:
 
 class InstagramService:
     def __init__(self, repo: InstagramRepository,
-                 client_factory: Callable[[str], InstagramClient] = InstagramClient,
+                 client_factory: Callable[[str, str], InstagramClient] = InstagramClient,
                  now: Callable[[], datetime] = utcnow):
         self.repo = repo
         self.client_factory = client_factory
@@ -100,50 +100,43 @@ class InstagramService:
 
     # ================================================================ connect
 
-    def connect(self, code: str) -> IgAccount:
-        """OAuth callback: code → long-lived token → profile → create/update the account."""
+    def connect(self, code: str) -> list[IgAccount]:
+        """OAuth callback: code → token → every Instagram account the user shared."""
         if not settings.instagram_configured:
-            raise InstagramNotConfigured("INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET-ը .env-ում չկա")
-        oauth = self.client_factory("")
-        short = oauth.exchange_code(code)
-        token = oauth.long_lived_token(short.access_token)
-        profile = self.client_factory(token.access_token).profile()
-        if profile.account_type and profile.account_type.upper() not in PROFESSIONAL_TYPES:
-            raise InstagramNotProfessional(
-                "Հաշիվը Professional (Creator կամ Business) չէ։ Instagram-ում փոխեք հաշվի տեսակը և նորից փորձեք։")
+            raise InstagramNotConfigured("META_APP_ID / META_APP_SECRET / META_CONFIG_ID-ը .env-ում չկա")
+        token = self.client_factory("", "").exchange_code(code)
+        ids = self.client_factory(token.access_token, "").assigned_accounts()
+        if not ids:
+            raise InstagramNoAccount("Instagram-ի Professional հաշիվ չի ընտրվել")
+        return [self.connect_token(token.access_token, ig_id, token.expires_at) for ig_id in ids]
 
+    def connect_token(self, access_token: str, ig_id: str, expires_at: datetime | None = None) -> IgAccount:
+        """Create/update the account for a token we already have (expires_at=None: never expires)."""
+        profile = self.client_factory(access_token, ig_id).profile()
         account = self.repo.account_by_ig_id(profile.ig_user_id)
         if account is None:
             user = self.repo.owner_for(profile.ig_user_id, profile.name or profile.username)
             account = IgAccount(user_id=user.id, ig_user_id=profile.ig_user_id, username=profile.username)
-            account.set_access_token(token.access_token)
+            account.set_access_token(access_token)
             self.repo.add_account(account)
         else:
-            account.set_access_token(token.access_token)
-        account.token_expires_at = token.expires_at
+            account.set_access_token(access_token)
+        account.token_expires_at = expires_at
         self._apply_profile(account, profile)
         self.repo.commit()
         log.info("Instagram connected: @%s (account %s)", account.username, account.id)
         return account
 
-    # ================================================================ token
-
-    def refresh_token_if_needed(self, account: IgAccount, client: InstagramClient) -> bool:
+    def _check_expiry(self, account: IgAccount, res: SyncResult) -> None:
+        """System user tokens never expire by default; if the config says otherwise, warn in time."""
         exp = account.token_expires_at
-        if exp is not None and exp - self.now() > REFRESH_BEFORE:
-            return False
-        try:
-            info = client.refresh_token()
-        except InstagramAuthError:
-            raise
-        except InstagramError as e:  # e.g. token younger than 24 h — harmless, try next night
-            log.warning("token refresh skipped for @%s: %s", account.username, e)
-            return False
-        account.set_access_token(info.access_token)
-        account.token_expires_at = info.expires_at
-        client.token = info.access_token
-        self.repo.commit()
-        return True
+        if exp is None:
+            return
+        left = exp - self.now()
+        if left <= timedelta(0):
+            raise InstagramAuthError("Instagram-ի թույլտվության ժամկետն անցել է, միացրեք նորից")
+        if left <= EXPIRY_WARNING:
+            res.warnings.append(f"թույլտվության ժամկետն անցնում է {left.days} օրից, միացրեք նորից")
 
     # ================================================================ sync
 
@@ -160,14 +153,14 @@ class InstagramService:
 
     def _sync(self, account: IgAccount, days: int | None) -> SyncResult:
         res = SyncResult(account.id, account.username)
-        client = self.client_factory(account.get_access_token())
+        client = self.client_factory(account.get_access_token(), account.ig_user_id)
         tz = self._tz(account)
         today = self.now().replace(tzinfo=timezone.utc).astimezone(tz).date()
         if days is None:
             days = settings.instagram_resync_days if account.last_synced_at else settings.instagram_backfill_days
         days = max(1, min(days, 90))
 
-        self.refresh_token_if_needed(account, client)
+        self._check_expiry(account, res)
         profile = client.profile()  # auth errors surface here, before any partial write
         self._apply_profile(account, profile)
         self.repo.commit()
@@ -257,8 +250,8 @@ class InstagramService:
             day = first + timedelta(days=i)
             b = self._bounds(tz, day, day)
             totals = metric_values(self._metrics(
-                client, "account", "me", list(DAILY_METRICS), period="day", metric_type="total_value", **b))
-            split = self._metrics(client, "account_follow_type", "me", ["reach", "follows_and_unfollows"],
+                client, "account", account.ig_user_id, list(DAILY_METRICS), period="day", metric_type="total_value", **b))
+            split = self._metrics(client, "account_follow_type", account.ig_user_id, ["reach", "follows_and_unfollows"],
                                   period="day", metric_type="total_value", breakdown="follow_type", **b)
             follows = metric_breakdown(split, "follows_and_unfollows")
             reach_by = metric_breakdown(split, "reach")
@@ -285,9 +278,9 @@ class InstagramService:
             for end in (today, today - timedelta(days=days)):  # current + previous period
                 b = self._bounds(tz, end - timedelta(days=days - 1), end)
                 totals = metric_values(self._metrics(
-                    client, "account", "me", ["reach", "accounts_engaged"],
+                    client, "account", account.ig_user_id, ["reach", "accounts_engaged"],
                     period="day", metric_type="total_value", **b))
-                split = self._metrics(client, "account_follow_type", "me", ["reach"],
+                split = self._metrics(client, "account_follow_type", account.ig_user_id, ["reach"],
                                       period="day", metric_type="total_value", breakdown="follow_type", **b)
                 self.repo.upsert_period(account.id, end, days, {
                     "reach": totals.get("reach", 0),
@@ -303,6 +296,7 @@ class InstagramService:
             if isinstance(e, InstagramAuthError):
                 raise
             res.warnings.append(f"stories: {e}")
+        no_insights = 0
         for m in items:
             post = self.repo.upsert_post(
                 account.id, m.ig_media_id, type=m.type, caption=m.caption,
@@ -314,7 +308,12 @@ class InstagramService:
             except InstagramUnsupported as e:  # e.g. posted before the switch to a professional account
                 got = {}
                 log.info("no insights for media %s: %s", m.ig_media_id, e)
-            values = {col: got.get(api, 0) for api, col in mapping.items()}
+            except InstagramPermissionError as e:  # no insights permission / story with too few viewers
+                got = {}
+                no_insights += 1
+                log.info("insights not permitted for media %s: %s", m.ig_media_id, e)
+            # a metric that didn't come is left out: the last known value stays (never overwritten with 0)
+            values = {col: got[api] for api, col in mapping.items() if api in got}
             # like/comment counts from the media object are fresher and exist even without insights
             if m.likes is not None:
                 values["likes"] = m.likes
@@ -322,13 +321,15 @@ class InstagramService:
                 values["comments"] = m.comments
             if self.repo.add_post_stats(post, values):
                 res.snapshots += 1
+        if no_insights:
+            res.warnings.append(f"posts: {no_insights} պոստի insights-ը հասանելի չէ (instagram_manage_insights)")
 
     def _sync_audience(self, account: IgAccount, client: InstagramClient, today: date, res: SyncResult) -> None:
         """follower_demographics needs 100+ followers; below that the API answers error 100."""
         fetched = {}
         for b in AUDIENCE_BREAKDOWNS:
             try:
-                data = client.insights("me", ["follower_demographics"], period="lifetime",
+                data = client.insights(account.ig_user_id, ["follower_demographics"], period="lifetime",
                                        metric_type="total_value", breakdown=b)
             except InstagramUnsupported as e:
                 res.warnings.append(f"audience: {e} (պետք է առնվազն 100 հետևորդ)")

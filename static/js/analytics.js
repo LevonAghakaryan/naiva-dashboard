@@ -854,7 +854,7 @@
     connected: "Instagram-ը միացված է ✓ Տվյալները բեռնվում են ֆոնում (1–2 րոպե), հետո թարմացրեք էջը։",
     denied: "Միացումը չեղարկվեց Instagram-ում։",
     state: "Անվտանգության ստուգումը չանցավ կամ ժամկետն անցավ։ Փորձեք նորից։",
-    not_professional: "Հաշիվը Professional (Creator կամ Business) չէ։ Փոխեք Instagram-ի կարգավորումներում և փորձեք նորից։",
+    no_account: "Instagram հաշիվ չի ընտրվել, կամ այն Professional (Creator կամ Business) չէ։ Փորձեք նորից։",
     error: "Instagram-ի հետ միանալ չհաջողվեց։ Փորձեք նորից։",
   };
   function showNotice(text, ok) {

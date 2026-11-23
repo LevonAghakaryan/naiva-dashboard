@@ -24,8 +24,8 @@ from app.models import (
 )
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.instagram_repository import InstagramRepository
-from app.services.instagram_service import InstagramNotProfessional, InstagramService, SyncBusy, _lock_for
-from tests.conftest import IG_ID, LONG, REFRESHED, SHORT, Transport
+from app.services.instagram_service import InstagramNoAccount, InstagramService, SyncBusy, _lock_for
+from tests.conftest import IG_ID, TOKEN
 
 NOW = datetime(2026, 11, 20, 10, 0)  # naive UTC → 14:00 in Yerevan, same date
 
@@ -40,39 +40,39 @@ def count(db, model) -> int:
 
 # ------------------------------------------------------------------ OAuth / client
 
-def test_authorize_url_has_state_scopes_and_redirect():
+def test_authorize_url_has_state_config_and_redirect():
     url = InstagramClient.authorize_url("STATE123")
-    assert url.startswith("https://www.instagram.com/oauth/authorize?")
+    assert url.startswith("https://www.facebook.com/v27.0/dialog/oauth?")
     assert "client_id=app-id-1" in url and "state=STATE123" in url
-    assert "instagram_business_basic%2Cinstagram_business_manage_insights" in url
+    assert "config_id=config-1" in url and "response_type=code" in url and "scope=" not in url
     assert "redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fauth%2Finstagram%2Fcallback" in url
     assert "APP-SECRET" not in url
 
 
 def test_errors_never_leak_token_or_secret(graph, client_factory):
-    graph.fail_with = (400, {"error": {"message": f"Bad token {LONG} / APP-SECRET-xyz", "type": "OAuthException",
+    graph.fail_with = (400, {"error": {"message": f"Bad token {TOKEN} / APP-SECRET-xyz", "type": "OAuthException",
                                        "code": 190}})
     with pytest.raises(InstagramAuthError) as exc:
-        client_factory(LONG).profile()
-    assert LONG not in str(exc.value) and "APP-SECRET-xyz" not in str(exc.value)
+        client_factory(TOKEN).profile()
+    assert TOKEN not in str(exc.value) and "APP-SECRET-xyz" not in str(exc.value)
 
 
 def test_rate_limit_is_not_auth_error(graph, client_factory):
     graph.fail_with = (400, {"error": {"message": "limit", "type": "OAuthException", "code": 4}})
     with pytest.raises(InstagramRateLimit):
-        client_factory(LONG).profile()
+        client_factory(TOKEN).profile()
 
 
 def test_server_errors_are_retried(graph, client_factory):
     graph.fail_with, graph.fail_times = (500, {"error": {"message": "boom", "code": 2}}), 2
-    assert client_factory(LONG).profile().username == "real.creator"
+    assert client_factory(TOKEN).profile().username == "real.creator"
     assert len(graph.calls) == 3
 
 
 def test_server_error_gives_up_after_retries(graph, client_factory):
     graph.fail_with = (503, {"error": {"message": "down", "code": 2}})
     with pytest.raises(InstagramError):
-        client_factory(LONG).profile()
+        client_factory(TOKEN).profile()
     assert len(graph.calls) == 3
 
 
@@ -83,34 +83,39 @@ def test_code_suffix_is_stripped(graph, client_factory):
 
 # ------------------------------------------------------------------ connect
 
-def test_connect_creates_account_with_encrypted_long_lived_token(db, client_factory):
-    acc = service(db, client_factory).connect("CODE")
+def test_connect_creates_account_with_encrypted_token(db, client_factory):
+    [acc] = service(db, client_factory).connect("CODE")
     assert acc.ig_user_id == IG_ID and acc.username == "real.creator" and acc.followers_count == 1000
-    assert acc.access_token not in (LONG, SHORT)  # stored encrypted
-    assert acc.get_access_token() == LONG
-    assert acc.token_expires_at is not None and acc.token_expires_at > datetime.now() + timedelta(days=55)
+    assert acc.access_token != TOKEN and acc.get_access_token() == TOKEN  # stored encrypted
+    assert acc.token_expires_at is None  # never expires
     user = db.get(User, acc.user_id)
     assert user.email == f"ig-{IG_ID}@creatorly.local" and user.password_hash.startswith("!")
 
 
 def test_reconnect_updates_same_account(db, client_factory):
-    a1 = service(db, client_factory).connect("CODE")
-    a2 = service(db, client_factory).connect("CODE2")
+    [a1] = service(db, client_factory).connect("CODE")
+    [a2] = service(db, client_factory).connect("CODE2")
     assert a1.id == a2.id and count(db, IgAccount) == 1 and count(db, User) == 1
 
 
-def test_connect_rejects_personal_account(db, graph, client_factory):
-    graph.account_type = "PERSONAL"
-    with pytest.raises(InstagramNotProfessional):
+def test_connect_without_shared_account_is_rejected(db, graph, client_factory):
+    graph.assigned = []
+    with pytest.raises(InstagramNoAccount):
         service(db, client_factory).connect("CODE")
     assert count(db, IgAccount) == 0
+
+
+def test_connect_with_ready_token(db, graph, client_factory):
+    acc = service(db, client_factory).connect_token(TOKEN, IG_ID)
+    assert acc.username == "real.creator" and acc.get_access_token() == TOKEN
+    assert len(graph.calls) == 1  # no OAuth calls
 
 
 # ------------------------------------------------------------------ sync
 
 @pytest.fixture
 def account(db, client_factory):
-    return service(db, client_factory).connect("CODE")
+    return service(db, client_factory).connect("CODE")[0]
 
 
 def test_first_sync_fills_all_tables(db, graph, client_factory, account):
@@ -176,12 +181,36 @@ def test_revoked_token_stops_sync_with_auth_error(db, graph, client_factory, acc
     assert count(db, AccountDailyStats) == 0
 
 
-def test_token_refreshed_when_close_to_expiry(db, client_factory, account):
+def test_expiring_token_warns_and_expired_token_stops(db, client_factory, account):
     account.token_expires_at = NOW + timedelta(days=3)
-    db.commit()
+    assert any("3 օրից" in w for w in service(db, client_factory).sync(account).warnings)
+    account.token_expires_at = NOW - timedelta(days=1)
+    with pytest.raises(InstagramAuthError):
+        service(db, client_factory).sync(account)
+
+
+def test_missing_insights_permission_keeps_posts(db, graph, client_factory, account):
+    graph.no_insights = True
+    res = service(db, client_factory).sync(account)
+    assert count(db, Post) == 2 and count(db, AccountDailyStats) == 0
+    assert any("instagram_manage_insights" in w for w in res.warnings)
+    assert sorted(s.likes for s in db.scalars(select(PostStats))) == [20, 50]  # counts come with the media
+
+
+def test_lost_permission_never_overwrites_known_stats_with_zero(db, graph, client_factory, account):
     service(db, client_factory).sync(account)
-    assert account.get_access_token() == REFRESHED
-    assert account.token_expires_at > NOW + timedelta(days=50)
+    before = count(db, PostStats)
+    graph.no_insights = True
+    service(db, client_factory).sync(account)
+    assert count(db, PostStats) == before
+    assert all(s.views == 7 for s in db.scalars(select(PostStats)))
+
+
+def test_transient_graph_error_is_not_auth_error(graph, client_factory):
+    graph.fail_with = (500, {"error": {"message": "try later", "type": "OAuthException", "code": 2}})
+    with pytest.raises(InstagramError) as exc:
+        client_factory(TOKEN).profile()
+    assert not isinstance(exc.value, InstagramAuthError)
 
 
 def test_demo_account_is_never_synced(db, client_factory):

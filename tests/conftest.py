@@ -18,15 +18,17 @@ from app import models  # noqa: E402,F401  (registers all tables)
 from core.config import settings  # noqa: E402
 from core.database import Base  # noqa: E402
 
-SHORT, LONG, REFRESHED = "SHORT-tok-123", "LONG-tok-456", "REFRESHED-tok-789"
+TOKEN = "EAA-tok-456"
 IG_ID = "17841400000000001"
 
 
 @pytest.fixture(autouse=True)
 def _settings(monkeypatch):
     monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
-    monkeypatch.setattr(settings, "instagram_app_id", "app-id-1")
-    monkeypatch.setattr(settings, "instagram_app_secret", "APP-SECRET-xyz")
+    monkeypatch.setattr(settings, "meta_app_id", "app-id-1")
+    monkeypatch.setattr(settings, "meta_app_secret", "APP-SECRET-xyz")
+    monkeypatch.setattr(settings, "meta_config_id", "config-1")
+    monkeypatch.setattr(settings, "graph_api_version", "v27.0")
     monkeypatch.setattr(settings, "instagram_redirect_uri", "http://localhost:8000/auth/instagram/callback")
     monkeypatch.setattr(settings, "instagram_backfill_days", 5)
     monkeypatch.setattr(settings, "instagram_resync_days", 2)
@@ -43,11 +45,13 @@ def db():
 
 
 class FakeGraph:
-    """Answers like graph.instagram.com. Records every call; tweak behaviour via attributes."""
+    """Answers like graph.facebook.com. Records every call; tweak behaviour via attributes."""
 
     def __init__(self):
         self.calls: list[tuple[str, str, dict]] = []
-        self.account_type = "MEDIA_CREATOR"
+        self.assigned = [IG_ID]
+        self.expires_in: int | None = None  # system user tokens never expire by default
+        self.no_insights = False  # token without instagram_manage_insights
         self.followers = 1000
         self.unsupported_metrics = {"reposts"}  # pretend this API version lacks it
         self.fail_with: tuple[int, dict] | None = None  # (status, payload) for every call
@@ -66,21 +70,23 @@ class FakeGraph:
         raise _Respond(400, {"error": {"message": msg, "type": "OAuthException", "code": 100}})
 
     def route(self, parsed, q, form):
-        host, path = parsed.netloc, parsed.path
-        if host == "api.instagram.com":
-            assert form["client_secret"] == "APP-SECRET-xyz"
-            return {"data": [{"access_token": SHORT, "user_id": IG_ID, "permissions": "x"}]}
-        if path == "/access_token":
-            assert q["access_token"] == SHORT
-            return {"access_token": LONG, "token_type": "bearer", "expires_in": 5184000}
-        if path == "/refresh_access_token":
-            return {"access_token": REFRESHED, "token_type": "bearer", "expires_in": 5184000}
-        tail = path.split("/", 2)[2]  # strip /vXX.X/
-        if tail == "me":
-            return {"id": "app-scoped-1", "user_id": IG_ID, "username": "real.creator", "name": "Real Creator",
-                    "account_type": self.account_type, "followers_count": self.followers,
-                    "follows_count": 10, "media_count": 2}
-        if tail == "me/media":
+        assert parsed.netloc == "graph.facebook.com"
+        tail = parsed.path.split("/", 2)[2]  # strip /vXX.X/
+        if tail == "oauth/access_token":
+            assert q["client_secret"] == "APP-SECRET-xyz" and q["client_id"] == "app-id-1"
+            return {"access_token": TOKEN, "token_type": "bearer"} | (
+                {"expires_in": self.expires_in} if self.expires_in else {})
+        assert q["access_token"] == TOKEN
+        if tail == "me/assigned_instagram_accounts":
+            return {"data": [{"id": i, "username": "real.creator"} for i in self.assigned]}
+        assert not tail.startswith("me"), "'me' is the system user, not the Instagram account"
+        if tail == IG_ID:
+            return {"id": IG_ID, "username": "real.creator", "name": "Real Creator",
+                    "followers_count": self.followers, "follows_count": 10, "media_count": 2}
+        if tail.endswith("/insights") and self.no_insights:
+            raise _Respond(400, {"error": {"message": "(#10) Application does not have permission",
+                                           "type": "OAuthException", "code": 10}})
+        if tail == f"{IG_ID}/media":
             return {"data": [
                 {"id": "m1", "media_type": "VIDEO", "media_product_type": "REELS", "caption": "reel",
                  "permalink": "https://instagram.com/p/m1", "thumbnail_url": "https://cdn/t1.jpg",
@@ -90,16 +96,16 @@ class FakeGraph:
                  "permalink": "https://instagram.com/p/m2", "media_url": "https://cdn/i2.jpg",
                  "timestamp": "2026-11-15T10:00:00+0000", "like_count": 20, "comments_count": 2},
             ]}
-        if tail == "me/stories":
+        if tail == f"{IG_ID}/stories":
             return {"data": []}
-        if tail == "me/insights":
+        if tail == f"{IG_ID}/insights":
             return self._account_insights(q)
         if tail.endswith("/insights"):
             metrics = q["metric"].split(",")
             if self.unsupported_metrics & set(metrics):
                 self._bad()
             return {"data": [{"name": m, "period": "lifetime", "values": [{"value": 7}]} for m in metrics]}
-        raise AssertionError(f"unexpected call {path}")
+        raise AssertionError(f"unexpected call {parsed.path}")
 
     def _account_insights(self, q):
         metrics = q["metric"].split(",")
@@ -154,4 +160,4 @@ def client_factory(graph):
     from app.integrations.instagram_graph import InstagramClient
 
     transport = Transport(graph)
-    return lambda token="": InstagramClient(token, transport=transport, sleep=lambda s: None)
+    return lambda token="", account_id=IG_ID: InstagramClient(token, account_id, transport=transport, sleep=lambda s: None)

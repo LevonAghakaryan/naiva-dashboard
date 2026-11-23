@@ -30,9 +30,9 @@ def _accounts(db) -> int:
     return db.scalar(select(func.count()).select_from(IgAccount))
 
 
-def test_login_redirects_to_instagram_with_httponly_state_cookie(web):
+def test_login_redirects_to_meta_with_httponly_state_cookie(web):
     r = web.get("/auth/instagram/login")
-    assert r.status_code == 303 and r.headers["location"].startswith("https://www.instagram.com/oauth/authorize")
+    assert r.status_code == 303 and r.headers["location"].startswith("https://www.facebook.com/v27.0/dialog/oauth")
     cookie = r.headers["set-cookie"]
     assert "ig_oauth_state=" in cookie and "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
     state = r.cookies["ig_oauth_state"]
@@ -69,7 +69,7 @@ def test_callback_success_connects_and_starts_sync(web, db):
 
 
 def test_routes_disabled_when_not_configured(web, monkeypatch):
-    monkeypatch.setattr(settings, "instagram_app_secret", "")
+    monkeypatch.setattr(settings, "meta_app_secret", "")
     assert web.get("/auth/instagram/login").status_code == 503
 
 

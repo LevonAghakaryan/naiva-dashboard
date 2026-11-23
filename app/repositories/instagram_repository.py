@@ -114,11 +114,14 @@ class InstagramRepository:
         return post
 
     def add_post_stats(self, post: Post, values: dict[str, int]) -> bool:
-        """Append a snapshot only when something changed since the last one. Returns True if added."""
+        """Append a snapshot only when something changed since the last one. Returns True if added.
+
+        A field missing from `values` keeps its last known value.
+        """
         self.db.flush()
-        clean = {k: max(0, int(values.get(k) or 0)) for k in STAT_FIELDS}
         last = self.db.scalar(
             select(PostStats).where(PostStats.post_id == post.id).order_by(PostStats.id.desc()).limit(1))
+        clean = {k: max(0, int(values.get(k, getattr(last, k) if last else 0) or 0)) for k in STAT_FIELDS}
         if last is not None and all(getattr(last, k) == v for k, v in clean.items()):
             return False
         self.db.add(PostStats(post_id=post.id, **clean))
