@@ -14,7 +14,7 @@ Instagram բլոգերների dashboard. FastAPI + Jinja2 + vanilla JS/CSS + My
 | Վիճակագրություն `/analytics` | `analytics_service.py`, `analytics_repository.py`, `schemas/analytics.py`, `analytics_api.py`, `templates/analytics.html`, `static/js/analytics.js`, `static/css/analytics.css` |
 | Ֆինանսներ `/finance` | `finance_*` նույն թղթապանակներում + `finance.html/js/css` |
 | Մրցակիցներ `/competitors` | `competitor_*` + `competitors.html/js/css`, `app/integrations/instagram_discovery.py` |
-| Instagram (կենդանի, առանց DB) `/instagram` | `instagram_live_service.py`, `instagram_live_api.py`, `app/integrations/instagram_graph.py` (`get_instagram_credentials()`), `instagram.html/js/css` |
+| Instagram live API (առանց DB, էջ չունի) `/api/instagram/{profile,media,insights}` | `instagram_live_service.py`, `instagram_live_api.py`, `app/integrations/instagram_graph.py` (`get_instagram_credentials()`) |
 | Ընդհանուր | `templates/base.html` (sidebar, mobile nav), `static/css/main.css` (թեմա, `.card`, `.tint tint-*`) |
 
 ## Token-ների խնայողություն
