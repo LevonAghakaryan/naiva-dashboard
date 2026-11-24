@@ -30,9 +30,12 @@ AUTHORIZE_HOST = "https://www.facebook.com"
 GRAPH_HOST = "https://graph.facebook.com"
 
 # Permissions live in the login configuration (META_CONFIG_ID), not in the URL.
-PROFILE_FIELDS = "id,username,name,profile_picture_url,followers_count,follows_count,media_count"
+PROFILE_FIELDS = ("id,username,name,biography,website,profile_picture_url,"
+                  "followers_count,follows_count,media_count")
 MEDIA_FIELDS = ("id,caption,media_type,media_product_type,permalink,media_url,thumbnail_url,"
                 "timestamp,like_count,comments_count")
+COMMENT_FIELDS = "id,text,username,timestamp,like_count,replies{id,text,username,timestamp}"
+CHILD_FIELDS = "id,media_type,media_url,thumbnail_url"
 
 # Graph error codes
 _AUTH_CODES = {190, 102}  # invalid/expired token
@@ -66,6 +69,24 @@ class InstagramRateLimit(InstagramError):
 
 class InstagramUnsupported(InstagramError):
     """A metric/parameter is not available for this account or media (error 100)."""
+
+
+@dataclass(frozen=True)
+class InstagramCredentials:
+    ig_id: str
+    token: str
+    version: str
+
+
+def get_instagram_credentials() -> InstagramCredentials | None:
+    """The one place the token comes from. Today: .env (INSTAGRAM_ACCOUNT_ID / INSTAGRAM_ACCESS_TOKEN).
+    Later (OAuth): read the current user's encrypted token from the DB here instead.
+    Values are stripped of spaces/quotes/line breaks a copy-paste may leave."""
+    token = settings.instagram_access_token.strip().strip("'\"").strip()
+    ig_id = settings.instagram_account_id.strip().strip("'\"").strip()
+    if not (token and ig_id):
+        return None
+    return InstagramCredentials(ig_id, token, settings.graph_api_version.strip())
 
 
 # ---------------------------------------------------------------- transport
@@ -229,6 +250,9 @@ class InstagramClient:
             err = {"message": payload.get("error_message") or err}
         code = err.get("code") or payload.get("code")
         msg = _scrub(str(err.get("message") or payload.get("error_message") or f"HTTP {status}"), *secrets)
+        # Full Graph error details for the server log (never the token).
+        log.warning("Graph API error: status=%s code=%s subcode=%s type=%s fbtrace_id=%s message=%s",
+                    status, code, err.get("error_subcode"), err.get("type"), err.get("fbtrace_id"), msg)
         if code in _RATE_CODES:
             return InstagramRateLimit(f"Instagram API-ի հարցումների սահմանը լրացավ ({msg})", code)
         if code == _INVALID_PARAM:
@@ -297,6 +321,25 @@ class InstagramClient:
             if len(out) >= limit or not nxt:
                 return out[:limit]
             data = self._request("GET", nxt)
+
+    def profile_raw(self) -> dict:
+        return self._get(self.account_id, fields=PROFILE_FIELDS)
+
+    def media_page(self, after: str | None = None, limit: int = 25) -> dict:
+        """One page of raw media objects + the `after` cursor of the next page (None = last page)."""
+        params = {"fields": MEDIA_FIELDS, "limit": min(limit, 100)}
+        if after:
+            params["after"] = after
+        data = self._get(f"{self.account_id}/media", **params)
+        paging = data.get("paging") or {}
+        nxt = (paging.get("cursors") or {}).get("after") if paging.get("next") else None
+        return {"data": data.get("data", []), "after": nxt}
+
+    def children(self, media_id: str) -> list[dict]:
+        return self._get(f"{media_id}/children", fields=CHILD_FIELDS).get("data", [])
+
+    def comments(self, media_id: str, limit: int = 50) -> list[dict]:
+        return self._get(f"{media_id}/comments", fields=COMMENT_FIELDS, limit=limit).get("data", [])
 
     def stories(self) -> list[Media]:
         data = self._get(f"{self.account_id}/stories", fields=MEDIA_FIELDS)

@@ -1,13 +1,21 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import analytics_api, competitor_api, finance_api, home_api, instagram_api, pages
+from app.routers import analytics_api, competitor_api, finance_api, home_api, instagram_api, instagram_live_api, pages
 from app.services.competitor_service import CompetitorInvalid, CompetitorNotFound
 from app.services.finance_service import FinanceInvalid, FinanceNotFound
 from core.config import BASE_DIR, settings
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
+
+# Which Instagram settings were loaded (never the values themselves).
+logging.getLogger("uvicorn.error").info(
+    "Instagram env: INSTAGRAM_ACCOUNT_ID=%s INSTAGRAM_ACCESS_TOKEN=%s GRAPH_API_VERSION=%s",
+    bool(settings.instagram_account_id.strip()), bool(settings.instagram_access_token.strip()),
+    settings.graph_api_version)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -16,6 +24,7 @@ app.include_router(finance_api.router)
 app.include_router(competitor_api.router)
 app.include_router(home_api.router)
 app.include_router(instagram_api.router)
+app.include_router(instagram_live_api.router)
 app.include_router(pages.router)
 
 

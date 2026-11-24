@@ -53,6 +53,11 @@ def finance_page(request: Request, account: IgAccount | None = Depends(get_optio
     return templates.TemplateResponse(request, "finance.html", _page_context(account, "finance"))
 
 
+@router.get("/instagram")
+def instagram_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
+    return templates.TemplateResponse(request, "instagram.html", _page_context(account, "instagram"))
+
+
 @router.get("/competitors")
 def competitors_page(request: Request, account: IgAccount | None = Depends(get_optional_ig_account)):
     return templates.TemplateResponse(request, "competitors.html", _page_context(account, "competitors"))
