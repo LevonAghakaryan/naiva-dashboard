@@ -86,7 +86,7 @@ class Post(Base):
     type: Mapped[str] = mapped_column(Enum(*POST_TYPES, name="post_type"))
     caption: Mapped[str | None] = mapped_column(Text)
     permalink: Mapped[str | None] = mapped_column(String(1024))
-    thumbnail_url: Mapped[str | None] = mapped_column(String(1024))
+    thumbnail_url: Mapped[str | None] = mapped_column(Text)
     posted_at: Mapped[datetime] = mapped_column(DateTime)
 
     ig_account: Mapped[IgAccount] = relationship(back_populates="posts")

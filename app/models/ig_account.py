@@ -28,7 +28,7 @@ class IgAccount(Base):
     user_id: Mapped[int] = mapped_column(BigIntFK, ForeignKey("users.id", ondelete="CASCADE"))
     ig_user_id: Mapped[str] = mapped_column(String(64), unique=True)
     username: Mapped[str] = mapped_column(String(64))
-    profile_pic_url: Mapped[str | None] = mapped_column(String(1024))
+    profile_pic_url: Mapped[str | None] = mapped_column(Text)
     # Always encrypted (Fernet). Use set_access_token() / get_access_token().
     access_token: Mapped[str] = mapped_column(Text)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime)

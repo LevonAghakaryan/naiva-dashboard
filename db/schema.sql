@@ -29,7 +29,7 @@ CREATE TABLE ig_accounts (
   user_id          BIGINT UNSIGNED NOT NULL,
   ig_user_id       VARCHAR(64) NOT NULL UNIQUE,
   username         VARCHAR(64) NOT NULL,
-  profile_pic_url  VARCHAR(1024),
+  profile_pic_url  TEXT,
   access_token     TEXT NOT NULL,            -- store encrypted (app-level)
   token_expires_at DATETIME,
   followers_count  INT UNSIGNED NOT NULL DEFAULT 0,
@@ -87,7 +87,7 @@ CREATE TABLE posts (
   type          ENUM('post','carousel','reels','story') NOT NULL,
   caption       TEXT,
   permalink     VARCHAR(1024),
-  thumbnail_url VARCHAR(1024),
+  thumbnail_url TEXT,
   posted_at     DATETIME NOT NULL,
   FOREIGN KEY (ig_account_id) REFERENCES ig_accounts(id) ON DELETE CASCADE,
   INDEX idx_posts_account_time (ig_account_id, posted_at)
@@ -261,7 +261,7 @@ CREATE TABLE competitors (
   name       VARCHAR(120),
   biography  TEXT,
   website    VARCHAR(255),
-  profile_picture_url VARCHAR(1024),
+  profile_picture_url TEXT,
   added_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_synced_at DATETIME,
   sync_error VARCHAR(255),
@@ -287,8 +287,8 @@ CREATE TABLE competitor_posts (
   type          ENUM('post','carousel','reels') NOT NULL,
   caption       TEXT,
   permalink     VARCHAR(1024),
-  media_url     VARCHAR(1024),
-  thumbnail_url VARCHAR(1024),
+  media_url     TEXT,
+  thumbnail_url TEXT,
   likes         INT UNSIGNED,                    -- NULL: the owner hides like counts
   comments      INT UNSIGNED NOT NULL DEFAULT 0,
   views         INT UNSIGNED,                    -- NULL: not returned
