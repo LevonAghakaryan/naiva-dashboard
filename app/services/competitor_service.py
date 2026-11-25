@@ -5,8 +5,8 @@ the same way (followers, posts, likes, comments, views of your posts) so the com
 Saves / shares / reach are insights, available only to an account's owner → not used here.
 
   ER (per post)   = (likes + comments) / followers × 100; the account ER is the average over posts
-  Posts per week  = posts in the period / (days / 7)
-  Likes, Comments, Views = average per post (hidden likes / missing views are skipped)
+  Posts           = number of posts in the period
+  Likes, Comments, Views = total over the posts in the period (hidden likes / missing views are skipped)
 """
 from __future__ import annotations
 
@@ -47,10 +47,10 @@ def _metrics(followers: int, rows: list[tuple[int | None, int, int | None]], day
     return Metrics(
         followers=followers,
         er=round(er, 2),
-        posts=round(len(rows) / (days / 7), 2),
-        likes=round(_avg([lk for lk, _ in with_likes]), 1),
-        comments=round(_avg([c for _, c, _ in rows]), 1),
-        views=round(_avg([v for _, _, v in rows if v is not None]), 1),
+        posts=len(rows),
+        likes=sum(lk for lk, _ in with_likes),
+        comments=sum(c for _, c, _ in rows),
+        views=sum(v for _, _, v in rows if v is not None),
     )
 
 

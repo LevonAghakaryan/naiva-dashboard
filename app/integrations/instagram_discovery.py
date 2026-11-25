@@ -13,14 +13,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.config import settings
 
 PROFILE_FIELDS = "id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count"
 MEDIA_FIELDS = ("id,caption,like_count,comments_count,view_count,media_type,media_product_type,"
                 "permalink,media_url,thumbnail_url,timestamp")
-MEDIA_LIMIT = 50  # newest posts per sync; 90 days of a typical account fit
+MEDIA_LIMIT = 50  # posts per page
+HISTORY_DAYS = 90  # pages are fetched until the posts are older than this
+MAX_PAGES = 6  # safety cap: at most 300 posts per sync
 
 
 class DiscoveryError(Exception):
@@ -90,14 +92,39 @@ def parse(data: dict) -> DiscoveredAccount:
     )
 
 
-def fetch(our_ig_user_id: str, access_token: str, username: str, timeout: float = 15) -> DiscoveredAccount:
-    fields = (f"business_discovery.username({username})"
-              f"{{{PROFILE_FIELDS},media.limit({MEDIA_LIMIT}){{{MEDIA_FIELDS}}}}}")
+def _next_cursor(data: dict) -> str | None:
+    # Business Discovery often omits "next" even when more posts exist → rely on the cursor
+    media = (data.get("business_discovery") or {}).get("media") or {}
+    if len(media.get("data") or []) < MEDIA_LIMIT:
+        return None
+    return ((media.get("paging") or {}).get("cursors") or {}).get("after")
+
+
+def _get(our_ig_user_id: str, access_token: str, username: str, after: str | None, timeout: float) -> dict:
+    media = f"media.after({after}).limit({MEDIA_LIMIT})" if after else f"media.limit({MEDIA_LIMIT})"
+    fields = f"business_discovery.username({username}){{{PROFILE_FIELDS},{media}{{{MEDIA_FIELDS}}}}}"
     query = urllib.parse.urlencode({"fields": fields, "access_token": access_token})
     url = f"https://graph.facebook.com/{settings.graph_api_version}/{our_ig_user_id}?{query}"
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def fetch(our_ig_user_id: str, access_token: str, username: str, timeout: float = 15) -> DiscoveredAccount:
+    """Profile + every post of the last HISTORY_DAYS days (pages of MEDIA_LIMIT, newest first)."""
+    cutoff = datetime.utcnow() - timedelta(days=HISTORY_DAYS + 1)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return parse(json.loads(resp.read().decode("utf-8")))
+        data = _get(our_ig_user_id, access_token, username, None, timeout)
+        account = parse(data)
+        for _ in range(MAX_PAGES - 1):
+            after = _next_cursor(data)
+            if not after or not account.posts or account.posts[-1].posted_at < cutoff:
+                break
+            data = _get(our_ig_user_id, access_token, username, after, timeout)
+            more = parse(data).posts
+            if not more:
+                break
+            account.posts += more
+        return account
     except urllib.error.HTTPError as e:
         try:
             msg = json.loads(e.read().decode("utf-8"))["error"]["message"]

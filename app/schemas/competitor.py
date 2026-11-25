@@ -18,10 +18,10 @@ METRIC_KEYS = ("followers", "er", "posts", "likes", "comments", "views")
 class Metrics(BaseModel):
     followers: int
     er: float = Field(description="(likes + comments) / followers × 100, average per post in the period")
-    posts: float = Field(description="posts per week in the period")
-    likes: float = Field(description="average likes per post (posts with hidden likes are skipped)")
+    posts: float = Field(description="number of posts in the period")
+    likes: float = Field(description="total likes of the posts in the period (posts with hidden likes are skipped)")
     comments: float
-    views: float = Field(description="average views per post that has a view count")
+    views: float = Field(description="total views of the posts in the period that have a view count")
 
 
 class Participant(BaseModel):

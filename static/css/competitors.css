@@ -95,7 +95,7 @@
   background: color-mix(in srgb, var(--c) 12%, var(--c-ffffff)); color: color-mix(in srgb, var(--c) 80%, var(--c-000000));
   box-shadow: 0 0 0 2px var(--c-ffffff), 0 0 0 4px var(--c); font-weight: 700; font-size: calc(var(--s) * .38); overflow: hidden;
 }
-.av img { width: 100%; height: 100%; object-fit: cover; }
+.av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- comparison ---------- */
 .cmp, .posts { container-type: inline-size; scroll-margin-top: 16px; border-radius: 22px; }

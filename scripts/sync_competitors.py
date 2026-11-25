@@ -1,4 +1,4 @@
-"""Nightly job: one public snapshot per competitor (Instagram Business Discovery) for every user.
+r"""Nightly job: one public snapshot per competitor (Instagram Business Discovery) for every user.
 
 Needs INSTAGRAM_SYNC=true and real access tokens (after Meta App Review). Usage:
     .venv\Scripts\python.exe scripts\sync_competitors.py
@@ -29,8 +29,14 @@ def main() -> int:
         accounts = {a.user_id: a for a in db.scalars(select(IgAccount).order_by(IgAccount.id.desc()))}
         for acc in accounts.values():
             service = CompetitorService(CompetitorRepository(db), AnalyticsRepository(db), acc)
-            for handle, status in service.sync_all().items():
-                print(f"@{acc.username} → @{handle}: {status}")
+            try:
+                results = service.sync_all()
+            except Exception as e:  # noqa: BLE001 — e.g. a token encrypted with another ENCRYPTION_KEY
+                db.rollback()
+                print(f"@{acc.username}: skipped ({type(e).__name__})")
+                continue
+            for handle, status in results.items():
+                print(f"@{acc.username} -> @{handle}: {status}")
     return 0
 
 
