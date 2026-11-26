@@ -43,7 +43,8 @@ DAILY_METRICS = {
     "reach": "reach", "views": "views", "accounts_engaged": "accounts_engaged",
     "total_interactions": "interactions", "likes": "likes", "comments": "comments",
     "saves": "saves", "shares": "shares", "reposts": "reposts",
-    "profile_views": "profile_views", "profile_links_taps": "link_taps",
+    # Bio-link taps. (profile_links_taps counts only the address/call/email/SMS buttons.)
+    "profile_views": "profile_views", "website_clicks": "link_taps",
 }
 # Media insights per product type → post_stats column
 MEDIA_METRICS = {
@@ -274,8 +275,9 @@ class InstagramService:
             level -= (row.new_follows or 0) - (row.unfollows or 0)
 
     def _sync_periods(self, account: IgAccount, client: InstagramClient, tz: ZoneInfo, today: date) -> None:
+        last = today - timedelta(days=1)  # periods end yesterday (matches AnalyticsService._periods)
         for days in PERIODS:
-            for end in (today, today - timedelta(days=days)):  # current + previous period
+            for end in (last, last - timedelta(days=days)):  # current + previous period
                 b = self._bounds(tz, end - timedelta(days=days - 1), end)
                 totals = metric_values(self._metrics(
                     client, "account", account.ig_user_id, ["reach", "accounts_engaged"],

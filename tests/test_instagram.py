@@ -133,8 +133,8 @@ def test_first_sync_fills_all_tables(db, graph, client_factory, account):
     assert [days[d].followers for d in sorted(days)] == [992, 994, 996, 998, 1000]
 
     periods = {(p.end_day, p.days) for p in db.scalars(select(AccountPeriodStats))}
-    assert periods == {(date(2026, 11, 20), 7), (date(2026, 11, 13), 7),
-                       (date(2026, 11, 20), 30), (date(2026, 10, 21), 30)}
+    assert periods == {(date(2026, 11, 19), 7), (date(2026, 11, 12), 7),  # periods end yesterday
+                       (date(2026, 11, 19), 30), (date(2026, 10, 20), 30)}
 
     posts = {p.ig_media_id: p for p in db.scalars(select(Post))}
     assert posts["m1"].type == "reels" and posts["m2"].type == "post"

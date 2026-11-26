@@ -190,8 +190,9 @@ class AnalyticsService:
         self.today = today or date.today()
 
     def _periods(self, days: int) -> tuple[date, date, date, date]:
-        """Current period ends today; previous period is the same length right before it."""
-        end = self.today
+        """Current period ends yesterday (today's insights are still incomplete);
+        previous period is the same length right before it."""
+        end = self.today - timedelta(days=1)
         start = end - timedelta(days=days - 1)
         prev_end = start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=days - 1)

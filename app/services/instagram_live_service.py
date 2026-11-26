@@ -25,7 +25,7 @@ CACHE_TTL = 300  # 5 minutes
 MAX_RANGE_DAYS = 30  # the API allows at most ~30 days per insights request
 
 ACCOUNT_METRICS = ["reach", "views", "accounts_engaged", "total_interactions", "likes", "comments",
-                   "shares", "saves", "profile_views", "profile_links_taps"]
+                   "shares", "saves", "profile_views", "website_clicks"]
 MEDIA_METRICS = {
     "FEED": ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"],
     "REELS": ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"],
