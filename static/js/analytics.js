@@ -470,9 +470,19 @@
       hl.setAttribute("visibility", "hidden");
       hd.setAttribute("visibility", "hidden");
     }
-    zones.addEventListener("pointerover", (e) => { const z = e.target.closest(".zone"); if (z) show(+z.dataset.i); });
-    zones.addEventListener("pointerdown", (e) => { const z = e.target.closest(".zone"); if (z) show(+z.dataset.i); });
-    zones.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hide(); });
+    // Nearest point to the pointer — lets a finger slide along the line (touch-action: pan-y keeps vertical scroll).
+    let cur = -1, dragging = false;
+    const at = (clientX) => {
+      const x = clientX - zones.getBoundingClientRect().left;
+      const i = n === 1 ? 0 : Math.round(((x - padL) / plotW) * (n - 1));
+      return Math.min(n - 1, Math.max(0, i));
+    };
+    const showAt = (clientX) => { const i = at(clientX); if (i !== cur) { cur = i; show(i); } };
+    zones.addEventListener("pointerdown", (e) => { dragging = e.pointerType !== "mouse"; cur = -1; showAt(e.clientX); });
+    zones.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || dragging) showAt(e.clientX); });
+    zones.addEventListener("pointerup", () => { dragging = false; });
+    zones.addEventListener("pointercancel", () => { dragging = false; });
+    zones.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { cur = -1; hide(); } });
     zones.addEventListener("focusin", (e) => { const z = e.target.closest(".zone"); if (z) show(+z.dataset.i); });
     zones.addEventListener("focusout", hide);
   }
@@ -591,21 +601,39 @@
   function renderActive() {
     if (!activeHours) return;
     const a = activeHours;
-    const best = $("#best-time");
-    if (a.best) {
-      best.textContent = `${a.best.days_label}, ${a.best.hours_label}`;
-      best.title = "Լավագույն ժամը";
-      best.hidden = false;
-    }
-    let html = "<div></div>" + a.slot_labels.map((s) => `<div class="hc">${s}</div>`).join("");
+    const empty = a.max_value <= 0;
+    const range = (s) => { const h = +a.slot_labels[s]; return `${String(h).padStart(2, "0")}:00–${String((h + 2) % 24).padStart(2, "0")}:00`; };
+
+    // Top 3 time slots (average over all weekdays) — readable without hovering.
+    const slotAvg = a.slot_labels.map((_, s) => a.grid.reduce((t, row) => t + row[s], 0) / 7);
+    const top = slotAvg.map((v, s) => ({ v, s })).sort((x, y) => y.v - x.v).slice(0, 3);
+    const dayAvg = a.grid.map((row) => row.reduce((t, v) => t + v, 0) / row.length);
+    const bestDay = dayAvg.indexOf(Math.max(...dayAvg));
+    $("#heat-top").innerHTML = empty
+      ? `<li class="heat-empty">Տվյալ դեռ չկա. սեղմիր համաժամեցնելու կոճակը</li>`
+      : top.map(({ v, s }, k) => `
+        <li><span class="ht-rank">${k + 1}</span><span class="ht-time">${range(s)}</span>
+          <span class="ht-bar"><i style="width:${Math.max(6, (v / top[0].v) * 100).toFixed(0)}%"></i></span>
+          <span class="ht-val num">≈${fmt.full(Math.round(v))}</span></li>`).join("")
+        + `<li class="ht-day">Ամենաակտիվ օրը՝ <b>${a.day_labels[bestDay]}</b></li>`;
+
+    const sel = state.heatSel || (a.best ? [a.best.days[0], a.slot_labels.indexOf(String(a.best.start_hour).padStart(2, "0"))] : null);
+    // Colour by min–max, not 0–max: hourly values are usually close, so 0–max paints everything dark.
+    const nz = a.grid.flat().filter((v) => v > 0);
+    const lo = nz.length ? Math.min(...nz) : 0, span = a.max_value - lo;
+    const level = (v) => (v <= 0 ? 0 : span <= 0 ? 4 : Math.min(4, Math.floor(((v - lo) / span) * 5)));
+    let html = "<div></div>" + a.slot_labels.map((s) => `<div class="hc">${+s}</div>`).join("");
     a.grid.forEach((row, d) => {
       html += `<div class="hl">${a.day_labels[d]}</div>`;
       row.forEach((v, s) => {
-        const lvl = a.max_value > 0 ? Math.min(4, Math.floor((v / a.max_value) * 5)) : 0;
-        html += `<div class="cell" style="background:${HEAT[lvl]}" title="${a.day_labels[d]} ${a.slot_labels[s]}:00 · ${fmt.full(v)}"></div>`;
+        const lvl = level(v);
+        const on = sel && sel[0] === d && sel[1] === s;
+        html += `<button type="button" class="cell" data-heat="${d},${s}" aria-pressed="${!!on}" style="background:${HEAT[lvl]}" aria-label="${esc(`${a.day_labels[d]} ${range(s)} · ${fmt.full(v)}`)}"></button>`;
       });
     });
     $("#heatmap").innerHTML = html;
+    $("#heat-detail").innerHTML = empty || !sel ? "Սեղմիր վանդակի վրա՝ մանրամասն տեսնելու համար"
+      : `<b>${a.day_labels[sel[0]]}, ${range(sel[1])}</b> · ≈${fmt.full(a.grid[sel[0]][sel[1]])} հետևորդ առցանց`;
   }
 
   // ---------- audience tab: daily bars ----------
@@ -763,6 +791,12 @@
     renderHero();
     renderGrid();
     renderPanel();
+    // Mobile: the panel renders below the card grid, so bring it into view.
+    const panel = state.chartFor && isPhone() && $("#chart-panel-slot .chart-panel");
+    if (panel) {
+      const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() => panel.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" }));
+    }
   }
 
   document.addEventListener("click", (e) => {
@@ -810,6 +844,12 @@
       if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
       state.month = { y, m };
       loadMonth();
+      return;
+    }
+    if ((el = t.closest("#heatmap [data-heat]"))) {
+      state.heatSel = el.dataset.heat.split(",").map(Number);
+      renderActive();
+      $(`#heatmap [data-heat="${el.dataset.heat}"]`).focus();
       return;
     }
     if ((el = t.closest("#daily-metric [data-metric]"))) { state.metric = el.dataset.metric; renderBars(); return; }

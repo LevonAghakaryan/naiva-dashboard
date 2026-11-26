@@ -88,20 +88,17 @@
   // ---------- today ----------
 
   function todoTile(t) {
-    const [bg, bd, fg, icBg] = t.c;
     const tag = t.href ? "a" : "div";
     const attrs = t.href ? `href="${t.href}"` : `title="Շուտով"`;
-    return `<${tag} ${attrs} class="todo tile" style="border-color:${bd};background:linear-gradient(150deg,${bg} 0%,#FFFFFF 85%)">
-      <span class="todo-ic" style="background:${icBg};color:${fg}">${svgIcon(t.icon, 16)}</span>
+    return `<${tag} ${attrs} class="todo tile" style="--a:${t.c}">
+      <span class="todo-ic">${svgIcon(t.icon, 16)}</span>
       <span class="todo-txt"><span class="todo-t">${esc(t.title)}</span><span class="todo-s">${esc(t.sub)}</span></span>
-      <span class="todo-cta" style="color:${fg}">${esc(t.cta)} →</span>
+      <span class="todo-cta">${esc(t.cta)} →</span>
     </${tag}>`;
   }
 
   function renderTodos() {
-    const RED = ["var(--c-fef2f2)", "var(--c-fecaca)", "#B42318", "var(--c-fee2e2)"];
-    const BLUE = ["var(--c-eef4ff)", "var(--c-dbe6fb)", "#1D4ED8", "var(--c-dbeafe)"];
-    const AMBER = ["var(--c-fffbeb)", "#FDE68A", "#B45309", "var(--c-fef3c7)"];
+    const RED = "#E11D48", BLUE = "#2563EB", AMBER = "#D97706";
     const todos = [
       // Inbox isn't built yet: sample task, not a link.
       { title: "4 համագործակցության առաջարկ սպասում է", sub: "2-ը՝ ավելի քան 2 օր", cta: "Պատասխանել", href: null, icon: ICON.msg, c: RED },
@@ -135,16 +132,16 @@
     const fPct = f.delta !== null && f.previous ? (f.delta / f.previous) * 100 : null;
     const incDelta = inc.previous > 0 ? ((inc.value - inc.previous) / inc.previous) * 100 : null;
     const K = [
-      { label: "Followers", full: fmt.full(f.value), short: fmt.compact(f.value), d: fPct, prev: f.previous, prevFmt: fmt.compact, ser: f.points, sum: false, col: "#2563EB", tint: "var(--c-eef4ff)" },
-      { label: "Reach", full: fmt.compact(r.value), short: fmt.compact(r.value), d: r.delta, prev: r.previous, prevFmt: fmt.compact, ser: r.points, sum: true, col: "#0E7490", tint: "var(--c-ecfeff)" },
-      { label: "Engagement", full: fmt.percent(e.value), short: fmt.percent(e.value), d: e.delta, prev: e.previous, prevFmt: fmt.percent, ser: e.points, sum: false, col: "#DB2777", tint: "var(--c-fdf2f8)" },
-      { label: "Եկամուտ", full: fmt.amd(inc.value), short: fmt.amdShort(inc.value), d: incDelta, prev: inc.previous, prevFmt: fmt.amdShort, ser: inc.points, sum: true, col: "#6D28D9", tint: "var(--c-f3f0ff)" },
+      { label: "Followers", full: fmt.full(f.value), short: fmt.compact(f.value), d: fPct, prev: f.previous, prevFmt: fmt.compact, ser: f.points, sum: false, col: "#2563EB" },
+      { label: "Reach", full: fmt.compact(r.value), short: fmt.compact(r.value), d: r.delta, prev: r.previous, prevFmt: fmt.compact, ser: r.points, sum: true, col: "#0E7490" },
+      { label: "Engagement", full: fmt.percent(e.value), short: fmt.percent(e.value), d: e.delta, prev: e.previous, prevFmt: fmt.percent, ser: e.points, sum: false, col: "#DB2777" },
+      { label: "Եկամուտ", full: fmt.amd(inc.value), short: fmt.amdShort(inc.value), d: incDelta, prev: inc.previous, prevFmt: fmt.amdShort, ser: inc.points, sum: true, col: "#6D28D9" },
     ];
     $("#kpis").innerHTML = K.map((k) => {
       const p = deltaPill(k.d), sp = spark(thin(k.ser, k.sum), 72, 26, 3);
       const sub = k.prev === null || k.prev === undefined ? "նախորդ՝ —" : "նախորդ՝ " + k.prevFmt(k.prev);
-      return `<div class="card kpi" style="background:linear-gradient(150deg,${k.tint} 0%,#FFFFFF 70%);border-color:${k.tint}">
-        <div class="kpi-top"><span class="muted" style="font-weight:600;white-space:nowrap">${k.label}</span><span class="dpill ${p.cls}">${p.text}</span></div>
+      return `<div class="card kpi" style="--a:${k.col}">
+        <div class="kpi-top"><span class="kpi-l">${k.label}</span><span class="dpill ${p.cls}">${p.text}</span></div>
         <div class="kv" title="${esc(k.full)}"><span class="kfull">${esc(k.full)}</span><span class="kshort">${esc(k.short)}</span></div>
         <div class="kpi-bot"><span class="muted ell" style="font-size:12px">${esc(sub)}</span><svg viewBox="0 0 72 26" style="width:72px;height:26px" aria-hidden="true"><path d="${sp.area}" fill="${k.col}22" stroke="none"/><path d="${sp.line}" fill="none" stroke="${k.col}" stroke-width="2.2"/></svg></div>
       </div>`;

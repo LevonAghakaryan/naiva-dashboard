@@ -1,7 +1,8 @@
 """Business logic for the competitors page.
 
 Only what Instagram Business Discovery returns publicly is compared, and "you" are measured
-the same way (followers, posts, likes, comments, views of your posts) so the comparison is fair.
+the same way — your own posts are read through Business Discovery too (public counters, which
+include boosted plays), falling back to your insights only when that isn't available.
 Saves / shares / reach are insights, available only to an account's owner → not used here.
 
   ER (per post)   = (likes + comments) / followers × 100; the account ER is the average over posts
@@ -11,6 +12,7 @@ Saves / shares / reach are insights, available only to an account's owner → no
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from time import monotonic
 
 from app.integrations import instagram_discovery
 from app.integrations.instagram_discovery import DiscoveredAccount, DiscoveryError
@@ -26,6 +28,9 @@ ME_COLOR = "#2563EB"
 COLORS = ["#F59E0B", "#8B5CF6", "#14B8A6", "#EC4899", "#10B981",
           "#0EA5E9", "#F97316", "#6366F1", "#84CC16", "#D946EF"]
 FEED_TYPES = ["reels", "carousel", "post"]
+# Your own public counters (Business Discovery), cached per account so the page doesn't hit the API each load.
+MY_PUBLIC_TTL = 15 * 60  # seconds
+_MY_PUBLIC_CACHE: dict[int, tuple[float, DiscoveredAccount]] = {}
 
 
 class CompetitorNotFound(Exception):
@@ -120,14 +125,34 @@ class CompetitorService:
             posts=out_posts, avg_post_er=avg_er,
         )
 
+    def _my_public_rows(self, start: date, end: date) -> list[tuple[int | None, int, int | None]] | None:
+        """Your posts read the SAME way as a competitor's (Business Discovery, public counters).
+        Public views include paid (boosted) plays, insights views don't — so insights would make
+        you look smaller than a competitor whose public counter we read. None → fall back to insights."""
+        acc = self.account
+        if not settings.instagram_sync or acc.ig_user_id.startswith("demo_"):
+            return None
+        hit = _MY_PUBLIC_CACHE.get(acc.id)
+        if hit is None or monotonic() - hit[0] > MY_PUBLIC_TTL:
+            try:
+                hit = (monotonic(), self._discover(acc.username))
+            except DiscoveryError:
+                return None
+            _MY_PUBLIC_CACHE[acc.id] = hit
+        since, until = datetime.combine(start, time.min), datetime.combine(end + timedelta(days=1), time.min)
+        return [(p.likes, p.comments, p.views) for p in hit[1].posts
+                if p.type in FEED_TYPES and since <= p.posted_at < until]
+
     def _me(self, days: int, start: date, end: date, before: date) -> Participant:
         acc = self.account
         followers = self.repo.my_followers(acc.id, end) or acc.followers_count or 0
         prev = self.repo.my_followers(acc.id, before)
-        rows = [
-            (st.likes if st else 0, st.comments if st else 0, st.views if st else None)
-            for _, st in self.analytics.list_posts(acc.id, FEED_TYPES, start, end)
-        ]
+        rows = self._my_public_rows(start, end)
+        if rows is None:
+            rows = [
+                (st.likes if st else 0, st.comments if st else 0, st.views if st else None)
+                for _, st in self.analytics.list_posts(acc.id, FEED_TYPES, start, end)
+            ]
         return Participant(
             id=None, handle=acc.username, name=acc.user.name if acc.user else None, is_me=True,
             color=ME_COLOR, avatar_url=acc.profile_pic_url, biography=None, website=None,

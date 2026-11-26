@@ -351,8 +351,11 @@ class InstagramClient:
         return self._get(f"{path}/insights", metric=",".join(metrics), **params)
 
     def online_followers(self) -> list[dict]:
-        """[{'end_time': ..., 'value': {'0': n, …, '23': n}}, …] — up to the last 30 days."""
-        data = self._get(f"{self.account_id}/insights", metric="online_followers", period="lifetime")
+        """[{'end_time': ..., 'value': {'0': n, …, '23': n}}, …] — the last 29 days.
+        Without since/until the API returns only the last 2 days, which are still empty (the data lags ~2 days)."""
+        until = int(time.time())
+        data = self._get(f"{self.account_id}/insights", metric="online_followers", period="lifetime",
+                         since=until - 29 * 86400, until=until)
         for m in data.get("data", []):
             if m.get("name") == "online_followers":
                 return list(m.get("values") or [])
